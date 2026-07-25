@@ -52,6 +52,12 @@ const OrderSchema = new Schema(
       default: "Pending",
     },
 
+    refundStatus: {
+      type: String,
+      enum: ["None", "Requested", "Completed"],
+      default: "None",
+    },
+
     orderStatus: {
       type: String,
       enum: [
@@ -64,6 +70,22 @@ const OrderSchema = new Schema(
         "Cancelled",
       ],
       default: "Placed",
+    },
+
+    deliveryHistory: {
+      type: [
+        {
+          status: {
+            type: String,
+            required: true,
+          },
+          timestamp: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+      default: [],
     },
   },
   {

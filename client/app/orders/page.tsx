@@ -15,17 +15,19 @@ type Order = {
   totalAmount: number;
   paymentMethod: string;
   paymentStatus: string;
+  refundStatus?: string;
   orderStatus: string;
+  deliveryHistory?: {
+    status: string;
+    timestamp: string;
+  }[];
   createdAt: string;
 };
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadOrders();
-  }, []);
+  const [cancelingOrderId, setCancelingOrderId] = useState<string | null>(null);
 
   const loadOrders = async () => {
     try {
@@ -44,6 +46,37 @@ export default function OrdersPage() {
       setLoading(false);
     }
   };
+
+  const cancelOrder = async (orderId: string) => {
+    setCancelingOrderId(orderId);
+
+    try {
+      const res = await fetch(`/api/order/cancel/${orderId}`, {
+        method: "POST",
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setOrders((currentOrders) =>
+          currentOrders.map((order) =>
+            order._id === orderId ? data.order : order
+          )
+        );
+      } else {
+        alert(data.message);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Unable to cancel order. Please try again.");
+    } finally {
+      setCancelingOrderId(null);
+    }
+  };
+
+  useEffect(() => {
+    loadOrders();
+  }, []);
 
   if (loading) {
     return (
@@ -127,7 +160,7 @@ export default function OrdersPage() {
 
               </div>
 
-              <div className="mt-6 flex justify-between">
+              <div className="mt-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 
                 <div>
 
@@ -145,10 +178,34 @@ export default function OrdersPage() {
                     </span>
                   </p>
 
+                  {order.refundStatus && order.refundStatus !== "None" ? (
+                    <p>
+                      Refund :
+                      <span className="font-semibold ml-2">
+                        {order.refundStatus}
+                      </span>
+                    </p>
+                  ) : null}
+
                 </div>
 
-                <div className="text-xl font-bold">
-                  ₹{order.totalAmount}
+                <div className="flex flex-col items-start gap-3 sm:items-end">
+                  <div className="text-xl font-bold">
+                    ₹{order.totalAmount}
+                  </div>
+
+                  {(order.orderStatus === "Placed" ||
+                    order.orderStatus === "Confirmed") && (
+                    <button
+                      onClick={() => cancelOrder(order._id)}
+                      disabled={cancelingOrderId === order._id}
+                      className="bg-red-500 text-white px-5 py-2 rounded-lg disabled:opacity-60"
+                    >
+                      {cancelingOrderId === order._id
+                        ? "Cancelling..."
+                        : "Cancel Order"}
+                    </button>
+                  )}
                 </div>
 
               </div>
