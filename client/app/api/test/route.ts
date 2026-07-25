@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import clientPromise from "@/lib/mongoose";
+import { connectDB } from "@/lib/mongoose";
 
 export async function GET() {
   try {
-    const client = await clientPromise;
+    const client = await connectDB();
 
     await client.db("admin").command({ ping: 1 });
 
