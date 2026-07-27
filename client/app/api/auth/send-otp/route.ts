@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-import connectDB from "@/lib/mongodb";
+import connectDB from "@/lib/connectDB";
 import OTP from "@/models/OTP";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
@@ -21,28 +21,38 @@ export async function POST(req: Request) {
       );
     }
 
+    // Generate 6 Digit OTP
     const otp = Math.floor(
       100000 + Math.random() * 900000
     ).toString();
 
+    // OTP Valid For 5 Minutes
+    const expiresAt = new Date(
+      Date.now() + 5 * 60 * 1000
+    );
+
+    // Delete Previous OTP
     await OTP.deleteMany({
       mobile,
     });
 
+    // Save New OTP
     await OTP.create({
       mobile,
       otp,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      expiresAt,
     });
 
-    // Development only
-    console.log("OTP:", otp);
+    console.log("================================");
+    console.log("Mobile :", mobile);
+    console.log("OTP    :", otp);
+    console.log("================================");
 
     return NextResponse.json({
       success: true,
-      message: "OTP sent successfully",
-      otp, // Remove this in production when using SMS
+      message: "OTP Sent Successfully",
     });
+
   } catch (error) {
     console.error("SEND OTP ERROR:", error);
 

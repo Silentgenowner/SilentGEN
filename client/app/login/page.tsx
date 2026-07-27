@@ -96,7 +96,7 @@ export default function LoginPage() {
 
 
     }
-    catch(error){
+    catch{
 
 
       alert(

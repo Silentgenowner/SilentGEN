@@ -1,55 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
+import jwt from "jsonwebtoken";
 
+const JWT_SECRET = process.env.JWT_SECRET!;
 
-export function middleware(
-  request: NextRequest
-) {
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
 
-
-  const token =
-    request.cookies.get("token")?.value;
-
-
-
-  const protectedRoutes = [
-    "/profile"
-  ];
-
-
-
-  const isProtected =
-    protectedRoutes.some(
-      (route)=>
-        request.nextUrl.pathname.startsWith(route)
-    );
-
-
-
-  if(isProtected && !token){
-
-
-    return NextResponse.redirect(
-      new URL(
-        "/login",
-        request.url
-      )
-    );
-
-
+  // Public Routes
+  if (
+    pathname === "/admin/login" ||
+    pathname === "/admin/create-admin"
+  ) {
+    return NextResponse.next();
   }
 
+  // Protect Admin Routes
+  if (pathname.startsWith("/admin")) {
+    const token = req.cookies.get("adminToken")?.value;
 
+    if (!token) {
+      return NextResponse.redirect(
+        new URL("/admin/login", req.url)
+      );
+    }
+
+    try {
+      jwt.verify(token, JWT_SECRET);
+
+      return NextResponse.next();
+    } catch {
+      const response = NextResponse.redirect(
+        new URL("/admin/login", req.url)
+      );
+
+      response.cookies.delete("adminToken");
+
+      return response;
+    }
+  }
 
   return NextResponse.next();
-
 }
 
-
-
 export const config = {
-
-  matcher:[
-    "/profile/:path*"
-  ]
-
+  matcher: ["/admin/:path*"],
 };

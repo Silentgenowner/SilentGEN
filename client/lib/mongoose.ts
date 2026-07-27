@@ -6,12 +6,7 @@ if (!MONGODB_URI) {
   throw new Error("Please define MONGODB_URI in .env.local");
 }
 
-let cached = (global as typeof global & {
-  mongoose?: {
-    conn: typeof mongoose | null;
-    promise: Promise<typeof mongoose> | null;
-  };
-}).mongoose;
+let cached = (global as any).mongoose;
 
 if (!cached) {
   cached = (global as any).mongoose = {

@@ -1,23 +1,22 @@
 import { NextResponse } from "next/server";
-import clientPromise from "@/lib/mongoose";
+import connectDB from "@/lib/connectDB";
 
 export async function GET() {
   try {
-    const client = await clientPromise;
-
-    await client.db("admin").command({ ping: 1 });
+    await connectDB();
 
     return NextResponse.json({
       success: true,
       message: "MongoDB Connected Successfully 🚀",
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
 
     return NextResponse.json(
       {
         success: false,
         message: "MongoDB Connection Failed",
+        error: error.message || error,
       },
       { status: 500 }
     );

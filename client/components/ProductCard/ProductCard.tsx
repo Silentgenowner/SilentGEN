@@ -3,27 +3,83 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 import WishlistButton from "@/components/WishlistButton/WishlistButton";
+import { useCart } from "@/context/CartContext";
 
 
-type ProductProps = {
-  id: number;
+type Props = {
+  id: string;
   name: string;
+  slug: string;
   price: number;
-  image?: string;
+  mrp: number;
+  image: string;
+  category: string;
+  discount?: number;
+  rating?: number;
+  sizes?: string[];
+  colors?: string[];
 };
+
 
 
 export default function ProductCard({
   id,
   name,
+  slug,
   price,
+  mrp,
   image,
-}: ProductProps) {
+  category,
+  discount,
+  rating = 0,
+  sizes = [],
+  colors = [],
+}: Props) {
 
 
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+
+  const {
+    cart,
+    addToCart,
+    updateQuantity,
+    removeFromCart,
+  } = useCart();
+
+
+
+  const [adding, setAdding] = useState(false);
+
+
+
+  function getProductId(productId: any) {
+
+    if (typeof productId === "string") {
+      return productId;
+    }
+
+
+    if (productId?._id) {
+      return productId._id;
+    }
+
+
+    return "";
+
+  }
+
+
+
+  const cartItem = cart.find((item: any) => {
+
+    return getProductId(item.productId) === id;
+
+  });
+
 
 
   const productImage =
@@ -33,119 +89,102 @@ export default function ProductCard({
 
 
 
-  const handleAddToCart = async () => {
+
+
+  async function handleAddCart() {
+
 
     try {
 
-      setLoading(true);
+      setAdding(true);
 
 
-      const res = await fetch("/api/cart/add", {
-
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        body: JSON.stringify({
-
-          productId: id,
-
-          name,
-
-          price,
-
-        }),
-
-      });
+      const success = await addToCart(
+        id,
+        1,
+        "",
+        ""
+      );
 
 
+      if (!success) {
 
-      const data = await res.json();
-
-
-
-      if (data.success) {
-
-        alert("Product Added To Cart");
-
-      } 
-      else {
-
-        alert(data.message);
+        router.push("/login");
 
       }
 
 
-    } 
-    catch (error) {
-
-      console.error(
-        "ADD CART ERROR:",
-        error
-      );
-
-      alert(
-        "Something went wrong"
-      );
-
-    } 
+    }
     finally {
 
-      setLoading(false);
+      setAdding(false);
 
     }
 
-  };
+  }
+
+
 
 
 
   return (
 
-    <div className="relative bg-white rounded-xl shadow hover:shadow-lg transition overflow-hidden">
+    <div
+      className="
+      bg-white
+      rounded-xl
+      shadow
+      overflow-hidden
+      hover:shadow-xl
+      transition
+      relative
+      "
+    >
 
 
-      {/* Product Image */}
+
+      <WishlistButton
+
+        id={id}
+
+        name={name}
+
+        slug={slug}
+
+        image={productImage}
+
+        price={price}
+
+        mrp={mrp}
+
+      />
+
+
+
+
 
       <Link href={`/product/${id}`}>
 
-        <Image
+        <div
+          className="
+          h-72
+          w-full
+          relative
+          "
+        >
 
-          src={productImage}
+          <Image
 
-          alt={name}
+            src={productImage}
 
-          width={500}
+            alt={name}
 
-          height={500}
+            fill
 
-          className="w-full h-72 object-cover"
+          sizes="(max-width: 768px) 100vw, 
+          (max-width: 1200px) 50vw, 25vw"
 
-        />
-
-      </Link>
-
-
-
-      <div className="p-4">
-
-
-
-        {/* Wishlist */}
-
-        <div className="flex justify-end mb-3">
-
-
-          <WishlistButton
-
-            id={id}
-
-            name={name}
-
-            price={price}
-
-            image={productImage}
+            className="object-cover"
 
           />
 
@@ -153,64 +192,268 @@ export default function ProductCard({
         </div>
 
 
-
-
-        {/* Product Name */}
-
-        <Link href={`/product/${id}`}>
-
-          <h2 className="text-xl font-semibold hover:text-blue-600 transition">
-
-            {name}
-
-          </h2>
-
-
-        </Link>
+      </Link>
 
 
 
 
-        {/* Price */}
 
-        <p className="text-gray-600 mt-2 text-lg">
+      <div className="p-5">
 
-          ₹{price}
+
+        <p className="text-sm text-gray-500">
+
+          {category}
 
         </p>
 
 
 
 
+        <Link href={`/product/${id}`}>
 
-        {/* Add Cart Button */}
+          <h2
+            className="
+            text-xl
+            font-semibold
+            mt-2
+            "
+          >
 
-        <button
+            {name}
+
+          </h2>
+
+        </Link>
 
 
-          onClick={handleAddToCart}
 
 
-          disabled={loading}
 
-
-          className="w-full mt-5 bg-black text-white py-3 rounded-lg hover:bg-gray-800 transition disabled:opacity-50"
-
-
+        <div
+          className="
+          flex
+          items-center
+          gap-3
+          mt-3
+          "
         >
 
+          <span className="text-xl font-bold">
 
-          {loading
-            ? "Adding..."
-            : "Add To Cart"
-          }
+            ₹{price}
+
+          </span>
 
 
-        </button>
+          <span
+            className="
+            text-gray-400
+            line-through
+            "
+          >
+
+            ₹{mrp}
+
+          </span>
+
+
+        </div>
+
+
+
+
+
+        {
+          discount &&
+          discount > 0 &&
+
+          <p
+            className="
+            text-green-600
+            text-sm
+            mt-2
+            "
+          >
+
+            {discount}% OFF
+
+          </p>
+
+        }
+
+
+
+
+
+
+
+
+        {
+          cartItem
+
+          ?
+
+          <div className="mt-5 space-y-3">
+
+
+            <div
+              className="
+              flex
+              items-center
+              justify-between
+              border
+              rounded-lg
+              p-2
+              "
+            >
+
+
+              <button
+
+                onClick={() =>
+                  updateQuantity(
+                    id,
+                    "",
+                    "",
+                    "decrease"
+                  )
+                }
+
+
+                className="
+                w-10
+                h-10
+                bg-gray-200
+                rounded
+                text-xl
+                "
+              >
+
+                -
+
+              </button>
+
+
+
+
+
+              <span
+                className="
+                text-xl
+                font-bold
+                "
+              >
+
+                {cartItem.quantity}
+
+              </span>
+
+
+
+
+
+              <button
+
+                onClick={() =>
+                  updateQuantity(
+                    id,
+                    "",
+                    "",
+                    "increase"
+                  )
+                }
+
+
+                className="
+                w-10
+                h-10
+                bg-gray-200
+                rounded
+                text-xl
+                "
+              >
+
+                +
+
+              </button>
+
+
+            </div>
+
+
+
+
+
+            <button
+
+              onClick={() =>
+                removeFromCart(
+                  id,
+                  "",
+                  ""
+                )
+              }
+
+
+              className="
+              w-full
+              bg-red-600
+              text-white
+              py-3
+              rounded-lg
+              "
+            >
+
+              Remove
+
+            </button>
+
+
+          </div>
+
+
+          :
+
+
+          <button
+
+            onClick={handleAddCart}
+
+            disabled={adding}
+
+
+            className="
+            mt-5
+            w-full
+            bg-black
+            text-white
+            py-3
+            rounded-lg
+            hover:bg-gray-800
+            transition
+            disabled:opacity-50
+            "
+          >
+
+            {
+              adding
+              ? 
+              "Adding..."
+              :
+              "Add To Cart"
+            }
+
+
+          </button>
+
+
+        }
 
 
 
       </div>
+
 
 
     </div>

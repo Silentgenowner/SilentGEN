@@ -1,182 +1,616 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
-type CartItem = {
-  productId: number;
-  name: string;
-  price: number;
-  quantity: number;
-};
+import { useCart } from "@/context/CartContext";
+
+
 
 export default function CartPage() {
-  const [items, setItems] = useState<CartItem[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const loadCart = async () => {
-    try {
-      const res = await fetch("/api/cart/get");
 
-      const data = await res.json();
+  const router = useRouter();
 
-      if (data.success) {
-        setItems(data.cart.items);
-      } else {
-        alert(data.message);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
+
+  const {
+    cart,
+    loading,
+    updateQuantity,
+    removeFromCart
+  } = useCart();
+
+
+
+
+  function getProductId(productId:any):string {
+
+
+    if(typeof productId === "string"){
+
+      return productId;
+
     }
-  };
 
-  useEffect(() => {
-    loadCart();
-  }, []);
 
-  const updateQuantity = async (
-    productId: number,
-    action: "increase" | "decrease"
-  ) => {
-    const res = await fetch("/api/cart/update", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        productId,
-        action,
-      }),
-    });
+    if(productId?._id){
 
-    const data = await res.json();
+      return productId._id;
 
-    if (data.success) {
-      setItems(data.cart.items);
-    } else {
-      alert(data.message);
     }
-  };
 
-  const removeItem = async (productId: number) => {
-    const res = await fetch("/api/cart/remove", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        productId,
-      }),
-    });
 
-    const data = await res.json();
+    return "";
 
-    if (data.success) {
-      setItems(data.cart.items);
-    } else {
-      alert(data.message);
-    }
-  };
-
-  const total = items.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0
-  );
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading...
-      </div>
-    );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-100 px-6 py-10">
-      <div className="max-w-5xl mx-auto bg-white rounded-xl shadow-md p-6">
 
-        <h1 className="text-3xl font-bold mb-8">
-          Shopping Cart
-        </h1>
 
-        {items.length === 0 ? (
-          <p>Your cart is empty.</p>
-        ) : (
-          <>
-            {items.map((item) => (
-              <div
-                key={item.productId}
-                className="flex justify-between items-center border-b py-5"
-              >
-                <div>
-                  <h2 className="text-xl font-semibold">
-                    {item.name}
-                  </h2>
 
-                  <p className="text-gray-500">
-                    ₹{item.price}
-                  </p>
-                </div>
 
-                <div className="flex items-center gap-3">
 
-                  <button
-                    onClick={() =>
-                      updateQuantity(
-                        item.productId,
-                        "decrease"
-                      )
-                    }
-                    className="bg-gray-200 px-3 py-1 rounded"
-                  >
-                    -
-                  </button>
+  const total =
+    cart.reduce(
 
-                  <span className="text-lg font-bold">
-                    {item.quantity}
-                  </span>
+      (sum,item)=>
 
-                  <button
-                    onClick={() =>
-                      updateQuantity(
-                        item.productId,
-                        "increase"
-                      )
-                    }
-                    className="bg-gray-200 px-3 py-1 rounded"
-                  >
-                    +
-                  </button>
+        sum +
 
-                  <button
-                    onClick={() =>
-                      removeItem(item.productId)
-                    }
-                    className="bg-red-500 text-white px-4 py-2 rounded"
-                  >
-                    Remove
-                  </button>
+        (item.price || 0) *
 
-                </div>
-              </div>
-            ))}
+        item.quantity,
 
-            <div className="mt-8 flex justify-between items-center">
+      0
 
-              <h2 className="text-2xl font-bold">
-                Total: ₹{total}
-              </h2>
+    );
 
-              <button className="bg-black text-white px-8 py-3 rounded-lg">
-                Checkout
-              </button>
 
-            </div>
-          </>
-        )}
+
+
+
+
+
+  if(loading){
+
+
+    return (
+
+      <div className="
+      min-h-screen
+      flex
+      items-center
+      justify-center
+      ">
+
+        Loading...
 
       </div>
-    </div>
+
+    );
+
+
+  }
+
+
+
+
+
+
+
+  if(cart.length===0){
+
+
+    return (
+
+      <main className="
+      min-h-screen
+      flex
+      flex-col
+      items-center
+      justify-center
+      ">
+
+
+        <h1 className="
+        text-3xl
+        font-bold
+        ">
+
+          Your Cart is Empty
+
+        </h1>
+
+
+
+
+        <Link
+
+          href="/shop"
+
+          className="
+          mt-6
+          bg-black
+          text-white
+          px-6
+          py-3
+          rounded-lg
+          "
+
+        >
+
+          Continue Shopping
+
+        </Link>
+
+
+      </main>
+
+
+    );
+
+
+  }
+
+
+
+
+
+
+
+
+  return (
+
+    <main className="
+    max-w-7xl
+    mx-auto
+    px-6
+    py-10
+    ">
+
+
+
+      <h1 className="
+      text-4xl
+      font-bold
+      mb-10
+      ">
+
+        Shopping Cart
+
+      </h1>
+
+
+
+
+
+
+
+      <div className="space-y-6">
+
+
+
+        {
+          cart.map((item,index)=>{
+
+
+            const productId =
+              getProductId(
+                item.productId
+              );
+
+
+
+
+            return (
+
+
+              <div
+
+                key={index}
+
+                className="
+                bg-white
+                rounded-xl
+                shadow
+                p-5
+                flex
+                flex-col
+                md:flex-row
+                items-center
+                gap-6
+                "
+
+              >
+
+
+
+
+                <Link
+
+                  href={`/product/${productId}`}
+
+                >
+
+
+
+                  <Image
+
+                    src={
+                      item.image ||
+                      "/images/no-image.png"
+                    }
+
+                    alt={
+                      item.name ||
+                      "Product"
+                    }
+
+                    width={140}
+
+                    height={140}
+
+                    className="
+                    rounded-lg
+                    object-cover
+                    "
+
+                  />
+
+
+                </Link>
+
+
+
+
+
+
+
+                <div className="flex-1">
+
+
+                  <h2 className="
+                  text-2xl
+                  font-semibold
+                  ">
+
+                    {item.name}
+
+                  </h2>
+
+
+
+
+                  <p className="
+                  text-2xl
+                  font-bold
+                  mt-3
+                  ">
+
+                    ₹{item.price}
+
+                  </p>
+
+
+
+
+
+
+                  {
+                    item.size &&
+
+                    <p className="mt-2">
+
+                      <b>Size:</b> {item.size}
+
+                    </p>
+
+                  }
+
+
+
+
+
+
+                  {
+                    item.color &&
+
+                    <p>
+
+                      <b>Color:</b> {item.color}
+
+                    </p>
+
+                  }
+
+
+
+
+                </div>
+
+
+
+
+
+
+
+
+
+                <div className="
+                flex
+                flex-col
+                items-center
+                gap-4
+                ">
+
+
+
+                  <div className="
+                  flex
+                  items-center
+                  gap-3
+                  ">
+
+
+
+                    <button
+
+                      onClick={()=>
+
+
+                        updateQuantity(
+
+                          productId,
+
+                          item.size || "",
+
+                          item.color || "",
+
+                          "decrease"
+
+                        )
+
+
+                      }
+
+
+                      className="
+                      w-10
+                      h-10
+                      bg-gray-200
+                      rounded
+                      text-xl
+                      "
+
+                    >
+
+                      -
+
+                    </button>
+
+
+
+
+
+
+                    <span className="
+                    text-xl
+                    font-bold
+                    ">
+
+                      {item.quantity}
+
+                    </span>
+
+
+
+
+
+
+                    <button
+
+
+                      onClick={()=>
+
+
+                        updateQuantity(
+
+                          productId,
+
+                          item.size || "",
+
+                          item.color || "",
+
+                          "increase"
+
+                        )
+
+
+                      }
+
+
+
+                      className="
+                      w-10
+                      h-10
+                      bg-gray-200
+                      rounded
+                      text-xl
+                      "
+
+                    >
+
+                      +
+
+                    </button>
+
+
+
+
+                  </div>
+
+
+
+
+
+
+
+
+
+                  <button
+
+
+                    onClick={()=>
+
+
+                      removeFromCart(
+
+                        productId,
+
+                        item.size || "",
+
+                        item.color || ""
+
+                      )
+
+
+                    }
+
+
+
+                    className="
+                    bg-red-600
+                    text-white
+                    px-5
+                    py-2
+                    rounded
+                    "
+
+                  >
+
+                    Remove
+
+                  </button>
+
+
+
+
+                </div>
+
+
+
+
+
+              </div>
+
+
+
+            );
+
+
+          })
+        }
+
+
+
+
+
+
+
+
+
+        <div className="
+        bg-white
+        rounded-xl
+        shadow
+        p-6
+        ">
+
+
+
+
+          <div className="
+          flex
+          justify-between
+          ">
+
+
+
+            <h2 className="
+            text-3xl
+            font-bold
+            ">
+
+              Total
+
+            </h2>
+
+
+
+
+
+            <span className="
+            text-3xl
+            font-bold
+            ">
+
+              ₹{total}
+
+            </span>
+
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <button
+
+
+            onClick={()=>router.push("/checkout")}
+
+
+            className="
+            w-full
+            mt-6
+            bg-black
+            text-white
+            py-4
+            rounded-lg
+            "
+
+          >
+
+            Proceed To Checkout
+
+
+          </button>
+
+
+
+
+
+        </div>
+
+
+
+
+
+      </div>
+
+
+
+
+
+    </main>
+
+
   );
+
+
 }

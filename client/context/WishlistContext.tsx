@@ -1,42 +1,119 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  ReactNode,
+} from "react";
 
-type WishlistItem = {
-  id: number;
+export type WishlistItem = {
+  id: string;
   name: string;
-  price: number;
+  slug: string;
   image: string;
+  price: number;
+  mrp: number;
 };
 
 type WishlistContextType = {
   wishlist: WishlistItem[];
-  addToWishlist: (product: WishlistItem) => void;
-  removeFromWishlist: (id: number) => void;
+
+  addToWishlist: (
+    item: WishlistItem
+  ) => void;
+
+  removeFromWishlist: (
+    id: string
+  ) => void;
+
+  clearWishlist: () => void;
+
+  isInWishlist: (
+    id: string
+  ) => boolean;
+
+  totalItems: number;
 };
 
-const WishlistContext = createContext<WishlistContextType | undefined>(
-  undefined
-);
+const WishlistContext = createContext<
+  WishlistContextType | undefined
+>(undefined);
+
+const STORAGE_KEY = "silentgen_wishlist";
 
 export function WishlistProvider({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
-  const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
+  const [wishlist, setWishlist] =
+    useState<WishlistItem[]>([]);
 
-  const addToWishlist = (product: WishlistItem) => {
-    const exists = wishlist.find((item) => item.id === product.id);
+  useEffect(() => {
+    const stored =
+      localStorage.getItem(STORAGE_KEY);
 
-    if (exists) return;
+    if (stored) {
+      try {
+        setWishlist(JSON.parse(stored));
+      } catch {
+        localStorage.removeItem(
+          STORAGE_KEY
+        );
+      }
+    }
+  }, []);
 
-    setWishlist([...wishlist, product]);
+  useEffect(() => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(wishlist)
+    );
+  }, [wishlist]);
+
+  const addToWishlist = (
+    item: WishlistItem
+  ) => {
+    setWishlist((prev) => {
+      const exists = prev.some(
+        (product) =>
+          product.id === item.id
+      );
+
+      if (exists) return prev;
+
+      return [...prev, item];
+    });
   };
 
-  const removeFromWishlist = (id: number) => {
-    setWishlist(wishlist.filter((item) => item.id !== id));
+  const removeFromWishlist = (
+    id: string
+  ) => {
+    setWishlist((prev) =>
+      prev.filter(
+        (item) => item.id !== id
+      )
+    );
   };
+
+  const clearWishlist = () => {
+    setWishlist([]);
+  };
+
+  const isInWishlist = (
+    id: string
+  ) => {
+    return wishlist.some(
+      (item) => item.id === id
+    );
+  };
+
+  const totalItems = useMemo(() => {
+    return wishlist.length;
+  }, [wishlist]);
 
   return (
     <WishlistContext.Provider
@@ -44,6 +121,9 @@ export function WishlistProvider({
         wishlist,
         addToWishlist,
         removeFromWishlist,
+        clearWishlist,
+        isInWishlist,
+        totalItems,
       }}
     >
       {children}
@@ -52,7 +132,8 @@ export function WishlistProvider({
 }
 
 export function useWishlist() {
-  const context = useContext(WishlistContext);
+  const context =
+    useContext(WishlistContext);
 
   if (!context) {
     throw new Error(

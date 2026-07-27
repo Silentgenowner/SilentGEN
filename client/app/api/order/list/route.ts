@@ -1,62 +1,173 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 
-import connectDB from "@/lib/mongodb";
+import connectDB from "@/lib/connectDB";
 import Order from "@/models/Order";
+
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 
-export async function GET() {
+
+export async function GET(
+  req: NextRequest
+) {
+
   try {
+
     await connectDB();
 
-    const cookieStore = await cookies();
 
-    const token = cookieStore.get("token")?.value;
 
-    if (!token) {
+    // =========================
+    // AUTH CHECK
+    // =========================
+
+    const token =
+      req.cookies.get("token")?.value;
+
+
+
+    if(!token){
+
       return NextResponse.json(
         {
-          success: false,
-          message: "Please Login First",
+          success:false,
+          message:"Please login first",
         },
         {
-          status: 401,
+          status:401,
         }
       );
+
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as {
-      id: string;
-    };
 
-    const orders = await Order.find({
-      userId: decoded.id,
-    }).sort({
-      createdAt: -1,
-    });
 
-    return NextResponse.json({
-      success: true,
-      orders,
-    });
+    let decoded:any;
 
-  } catch (error) {
 
-    console.error(
-      "GET ORDERS ERROR:",
-      error
-    );
+    try{
+
+      decoded =
+        jwt.verify(
+          token,
+          JWT_SECRET
+        );
+
+
+    }catch{
+
+
+      return NextResponse.json(
+        {
+          success:false,
+          message:"Invalid token",
+        },
+        {
+          status:401,
+        }
+      );
+
+
+    }
+
+
+
+    const userId =
+      decoded.id ||
+      decoded.userId;
+
+
+
+    if(!userId){
+
+      return NextResponse.json(
+        {
+          success:false,
+          message:"User not found",
+        },
+        {
+          status:401,
+        }
+      );
+
+    }
+
+
+
+
+
+    // =========================
+    // GET ORDERS
+    // =========================
+
+
+    const orders =
+      await Order.find({
+        user:userId,
+      })
+      .sort({
+        createdAt:-1,
+      })
+      .select(
+        `
+        _id
+        items
+        totalAmount
+        paymentMethod
+        paymentStatus
+        orderStatus
+        shippingAddress
+        createdAt
+        trackingNumber
+        courierPartner
+        `
+      );
+
+
+
+
 
     return NextResponse.json(
       {
-        success: false,
-        message: "Server Error",
+        success:true,
+
+        count:
+        orders.length,
+
+        orders,
+
       },
       {
-        status: 500,
+        status:200,
       }
     );
+
+
+
+  }catch(error:any){
+
+
+    console.log(
+      "ORDER LIST ERROR:",
+      error
+    );
+
+
+    return NextResponse.json(
+      {
+        success:false,
+
+        message:
+        error.message ||
+        "Failed to get orders",
+      },
+      {
+        status:500,
+      }
+    );
+
+
   }
+
 }

@@ -1,58 +1,219 @@
-import { Schema, model, models } from "mongoose";
+import mongoose, {
+  Schema,
+  Model,
+} from "mongoose";
 
-const AddressSchema = new Schema(
-  {
-    userId: {
-      type: String,
-      required: true,
-    },
 
-    fullName: {
-      type: String,
-      required: true,
-    },
+export interface IAddress {
 
-    mobile: {
-      type: String,
-      required: true,
-    },
+  userId: mongoose.Types.ObjectId;
 
-    pincode: {
-      type: String,
-      required: true,
-    },
+  fullName:string;
 
-    state: {
-      type: String,
-      required: true,
-    },
+  mobile:string;
 
-    city: {
-      type: String,
-      required: true,
-    },
+  address:string;
 
-    area: {
-      type: String,
-      required: true,
-    },
+  area:string;
 
-    house: {
-      type: String,
-      required: true,
-    },
+  city:string;
 
-    landmark: {
-      type: String,
-      default: "",
-    },
-  },
-  {
-    timestamps: true,
-  }
+  state:string;
+
+  country:string;
+
+  pincode:string;
+
+  landmark?:string;
+
+  isDefault?:boolean;
+
+  createdAt?:Date;
+
+  updatedAt?:Date;
+
+}
+
+
+
+const AddressSchema =
+new Schema<IAddress>(
+
+{
+
+userId:{
+
+
+type:Schema.Types.ObjectId,
+
+ref:"User",
+
+required:true,
+
+
+},
+
+
+
+fullName:{
+
+
+type:String,
+
+required:true,
+
+trim:true,
+
+
+},
+
+
+
+mobile:{
+
+
+type:String,
+
+required:true,
+
+trim:true,
+
+
+},
+
+
+
+
+address:{
+
+
+type:String,
+
+required:true,
+
+trim:true,
+
+
+},
+
+
+
+
+area:{
+
+
+type:String,
+
+required:true,
+
+trim:true,
+
+
+},
+
+
+
+
+city:{
+
+
+type:String,
+
+required:true,
+
+trim:true,
+
+
+},
+
+
+
+
+state:{
+
+
+type:String,
+
+required:true,
+
+trim:true,
+
+
+},
+
+
+
+
+country:{
+
+
+type:String,
+
+default:"India",
+
+
+},
+
+
+
+
+pincode:{
+
+
+type:String,
+
+required:true,
+
+
+},
+
+
+
+
+landmark:{
+
+
+type:String,
+
+default:"",
+
+
+},
+
+
+
+
+isDefault:{
+
+
+type:Boolean,
+
+default:false,
+
+
+},
+
+
+
+},
+
+{
+timestamps:true
+}
+
 );
 
-const Address =
-  models.Address || model("Address", AddressSchema);
+
+
+const Address:Model<IAddress> =
+
+mongoose.models.Address ||
+
+mongoose.model<IAddress>(
+"Address",
+AddressSchema
+);
+
+
 
 export default Address;

@@ -6,11 +6,19 @@ export async function POST() {
     message: "Logout Successful",
   });
 
-  response.cookies.set("token", "", {
-    httpOnly: true,
-    expires: new Date(0),
-    path: "/",
-  });
+response.cookies.set("token","",{
+
+httpOnly:true,
+
+expires:new Date(0),
+
+path:"/",
+
+sameSite:"lax",
+
+secure:process.env.NODE_ENV==="production"
+
+});
 
   return response;
 }

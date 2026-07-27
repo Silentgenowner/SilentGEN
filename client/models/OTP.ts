@@ -1,10 +1,12 @@
-import mongoose, { Schema, models, model } from "mongoose";
+import { Schema, model, models } from "mongoose";
 
 const OTPSchema = new Schema(
   {
     mobile: {
       type: String,
       required: true,
+      trim: true,
+      index: true,
     },
 
     otp: {
@@ -15,6 +17,9 @@ const OTPSchema = new Schema(
     expiresAt: {
       type: Date,
       required: true,
+      index: {
+        expires: 0,
+      },
     },
   },
   {
@@ -22,15 +27,7 @@ const OTPSchema = new Schema(
   }
 );
 
-OTPSchema.index(
-  {
-    expiresAt: 1,
-  },
-  {
-    expireAfterSeconds: 0,
-  }
-);
-
-const OTP = models.OTP || model("OTP", OTPSchema);
+const OTP =
+  models.OTP || model("OTP", OTPSchema);
 
 export default OTP;

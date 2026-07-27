@@ -34,7 +34,7 @@ export function verifyToken(
     );
 
   }
-  catch(error){
+  catch{
 
     return null;
 

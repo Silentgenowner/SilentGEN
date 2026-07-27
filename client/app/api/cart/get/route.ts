@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
 
-import connectDB from "@/lib/mongodb";
+import connectDB from "@/lib/connectDB";
 import Cart from "@/models/Cart";
 
 const JWT_SECRET = process.env.JWT_SECRET!;

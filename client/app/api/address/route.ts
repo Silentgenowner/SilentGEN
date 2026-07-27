@@ -1,100 +1,55 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
+
 import jwt from "jsonwebtoken";
 
-import connectDB from "@/lib/mongodb";
+import connectDB from "@/lib/connectDB";
+
 import Address from "@/models/Address";
 
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET =
+process.env.JWT_SECRET!;
 
 
 
-// GET ALL ADDRESS
-
-export async function GET() {
-
-  try {
+function getUserId(req: NextRequest){
 
 
-    const cookieStore =
-      await cookies();
-
-
-    const token =
-      cookieStore.get("token")?.value;
+  const token =
+  req.cookies.get("token")?.value;
 
 
 
-    if(!token){
+  if(!token){
 
-      return NextResponse.json(
-        {
-          success:false,
-          message:"Unauthorized"
-        },
-        {
-          status:401
-        }
-      );
+    return null;
 
-    }
+  }
 
+
+
+  try{
 
 
     const decoded:any =
-      jwt.verify(
-        token,
-        JWT_SECRET
-      );
-
-
-
-    await connectDB();
-
-
-
-    const addresses =
-      await Address.find({
-
-        userId: decoded.id
-
-      });
-
-
-
-    return NextResponse.json({
-
-      success:true,
-
-      addresses
-
-    });
-
-
-
-  }
-  catch(error){
-
-
-    console.error(
-      "GET ADDRESS ERROR",
-      error
+    jwt.verify(
+      token,
+      JWT_SECRET
     );
 
 
-    return NextResponse.json(
-      {
-        success:false,
-        message:"Server Error"
-      },
-      {
-        status:500
-      }
-    );
+    return decoded.id || decoded.userId;
 
 
   }
+  catch{
+
+
+    return null;
+
+
+  }
+
 
 }
 
@@ -102,135 +57,261 @@ export async function GET() {
 
 
 
-// ADD ADDRESS
 
-export async function POST(
-  request:Request
+
+// ============================
+// GET ALL ADDRESS
+// ============================
+
+export async function GET(
+req:NextRequest
 ){
 
-  try{
+
+try{
 
 
-    const body =
-      await request.json();
-
-
-
-    const cookieStore =
-      await cookies();
+await connectDB();
 
 
 
-    const token =
-      cookieStore.get("token")?.value;
+const userId =
+getUserId(req);
 
 
 
-    if(!token){
+if(!userId){
 
+return NextResponse.json(
+{
+success:false,
+message:"Unauthorized"
+},
+{
+status:401
+}
+);
 
-      return NextResponse.json(
-        {
-          success:false,
-          message:"Unauthorized"
-        },
-        {
-          status:401
-        }
-      );
-
-
-    }
-
-
-
-    const decoded:any =
-      jwt.verify(
-        token,
-        JWT_SECRET
-      );
+}
 
 
 
-    await connectDB();
+
+const addresses =
+await Address.find({
+
+userId
+
+})
+.sort({
+
+createdAt:-1
+
+});
 
 
 
-    const address =
-      await Address.create({
-
-        userId:
-        decoded.id,
 
 
-        fullName:
-        body.fullName,
+return NextResponse.json({
 
+success:true,
 
-        mobile:
-        body.mobile,
+addresses
 
-
-        pincode:
-        body.pincode,
-
-
-        state:
-        body.state,
-
-
-        city:
-        body.city,
-
-
-        area:
-        body.area,
-
-
-        house:
-        body.house,
-
-
-        landmark:
-        body.landmark || ""
-
-      });
+});
 
 
 
-    return NextResponse.json({
 
-      success:true,
-
-      message:"Address Added",
-
-      address
-
-    });
+}
+catch(error:any){
 
 
-
-  }
-  catch(error){
-
-
-    console.error(
-      "ADD ADDRESS ERROR",
-      error
-    );
+console.log(
+"GET ADDRESS ERROR",
+error
+);
 
 
-    return NextResponse.json(
-      {
-        success:false,
-        message:"Server Error"
-      },
-      {
-        status:500
-      }
-    );
+
+return NextResponse.json({
+
+success:false,
+
+message:error.message
+
+},
+{
+status:500
+}
+);
 
 
-  }
+
+}
+
+
+}
+
+
+
+
+
+
+
+
+
+// ============================
+// CREATE ADDRESS
+// ============================
+
+export async function POST(
+req:NextRequest
+){
+
+
+try{
+
+
+await connectDB();
+
+
+
+
+const userId =
+getUserId(req);
+
+
+
+if(!userId){
+
+
+return NextResponse.json({
+
+success:false,
+
+message:"Unauthorized"
+
+},
+{
+status:401
+});
+
+
+}
+
+
+
+
+const body =
+await req.json();
+
+
+
+
+
+const address =
+await Address.create({
+
+
+
+userId,
+
+
+
+fullName:
+body.fullName,
+
+
+
+mobile:
+body.mobile,
+
+
+
+address:
+body.address,
+
+
+
+area:
+body.area || "",
+
+
+
+city:
+body.city,
+
+
+
+state:
+body.state,
+
+
+
+country:
+body.country || "India",
+
+
+
+pincode:
+body.pincode,
+
+
+
+landmark:
+body.landmark || "",
+
+
+
+});
+
+
+
+
+
+
+
+return NextResponse.json({
+
+success:true,
+
+address
+
+});
+
+
+
+
+
+
+}
+catch(error:any){
+
+
+console.log(
+"CREATE ADDRESS ERROR",
+error
+);
+
+
+
+return NextResponse.json({
+
+success:false,
+
+message:error.message ||
+"Create Address Failed"
+
+},
+{
+status:500
+});
+
+
+
+}
+
 
 }

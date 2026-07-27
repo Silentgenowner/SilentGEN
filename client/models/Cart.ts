@@ -1,40 +1,99 @@
-import { Schema, model, models } from "mongoose";
+import mongoose, { Schema, Document, Model } from "mongoose";
 
-const CartItemSchema = new Schema({
-  productId: {
-    type: Number,
-    required: true,
-  },
+export interface ICart extends Document {
+  userId: mongoose.Types.ObjectId;
+  items: {
+    productId: mongoose.Types.ObjectId;
+    name: string;
+    image: string;
+    price: number;
+    quantity: number;
+    size?: string;
+    color?: string;
+  }[];
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-  name: {
-    type: String,
-    required: true,
-  },
-
-  price: {
-    type: Number,
-    required: true,
-  },
-
-  quantity: {
-    type: Number,
-    default: 1,
-  },
-});
-
-const CartSchema = new Schema(
+const CartItemSchema = new Schema(
   {
-    userId: {
-      type: String,
+    productId: {
+      type: Schema.Types.ObjectId,
+      ref: "Product",
       required: true,
-      unique: true,
     },
 
-    items: [CartItemSchema],
+    name: {
+      type: String,
+      required: true,
+    },
+
+    image: {
+      type: String,
+      default: "",
+    },
+
+    price: {
+      type: Number,
+      required: true,
+    },
+
+    quantity: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+
+    size: {
+      type: String,
+      default: "",
+    },
+
+    color: {
+      type: String,
+      default: "",
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
+
+const CartSchema = new Schema<ICart>(
+  {
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    items: {
+      type: [CartItemSchema],
+      default: [],
+    },
   },
   {
     timestamps: true,
   }
 );
 
-export default models.Cart || model("Cart", CartSchema);
+
+// Same user + same product + same size + same color
+// duplicate cart item prevent કરવા માટે
+CartSchema.index(
+  {
+    userId: 1,
+    "items.productId": 1,
+    "items.size": 1,
+    "items.color": 1,
+  }
+);
+
+
+const Cart: Model<ICart> =
+  mongoose.models.Cart ||
+  mongoose.model<ICart>("Cart", CartSchema);
+
+
+export default Cart;

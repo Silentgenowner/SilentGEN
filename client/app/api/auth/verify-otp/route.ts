@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 
-import connectDB from "@/lib/mongodb";
+import connectDB from "@/lib/connectDB";
 import OTP from "@/models/OTP";
 import User from "@/models/User";
 
@@ -29,17 +29,27 @@ export async function POST(req: Request) {
       mobile,
     });
 
-    console.log("==================================");
-    console.log("Mobile:", mobile);
-    console.log("Entered OTP:", otp);
-    console.log("Database OTP:", otpData?.otp);
-    console.log("==================================");
-
     if (!otpData) {
       return NextResponse.json(
         {
           success: false,
           message: "OTP not found",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    if (otpData.expiresAt < new Date()) {
+      await OTP.deleteMany({
+        mobile,
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "OTP Expired",
         },
         {
           status: 400,
@@ -67,7 +77,15 @@ export async function POST(req: Request) {
       user = await User.create({
         mobile,
         name: "New User",
+        isProfileCompleted:false,
+        isVerified: true,
+        lastLogin: new Date(),
       });
+    } else {
+      user.isVerified = true;
+      user.lastLogin = new Date();
+
+      await user.save();
     }
 
     await OTP.deleteMany({
@@ -78,6 +96,7 @@ export async function POST(req: Request) {
       {
         id: user._id.toString(),
         mobile: user.mobile,
+        role: user.role,
       },
       JWT_SECRET,
       {
@@ -85,15 +104,19 @@ export async function POST(req: Request) {
       }
     );
 
+    const profileRequired =
+      !user.isProfileCompleted;
+
     const response = NextResponse.json({
       success: true,
       message: "Login Successful",
+      profileRequired,
       user,
     });
 
     response.cookies.set("token", token, {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60 * 24 * 7,

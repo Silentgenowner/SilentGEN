@@ -1,142 +1,697 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-export default function AddressPage() {
-  const [form, setForm] = useState({
-    fullName: "",
-    mobile: "",
-    pincode: "",
-    state: "",
-    city: "",
-    area: "",
-    house: "",
-    landmark: "",
-  });
 
-  const [loading, setLoading] = useState(false);
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
-  };
+type Address = {
 
-  const saveAddress = async () => {
-    setLoading(true);
+_id:string;
 
-    try {
-      const res = await fetch("/api/address/save", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(form),
-      });
+fullName:string;
 
-      const data = await res.json();
+mobile:string;
 
-      if (data.success) {
-        alert("Address Saved Successfully");
-      } else {
-        alert(data.message);
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Server Error");
-    } finally {
-      setLoading(false);
-    }
-  };
+address:string;
 
-  return (
-    <main className="min-h-screen bg-gray-100 py-10">
-      <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-lg p-8">
+area:string;
 
-        <h1 className="text-3xl font-bold mb-8">
-          Delivery Address
-        </h1>
+city:string;
 
-        <div className="grid gap-4">
+state:string;
 
-          <input
-            name="fullName"
-            placeholder="Full Name"
-            value={form.fullName}
-            onChange={handleChange}
-            className="border rounded-lg p-3"
-          />
+country:string;
 
-          <input
-            name="mobile"
-            placeholder="Mobile Number"
-            value={form.mobile}
-            onChange={handleChange}
-            className="border rounded-lg p-3"
-          />
+pincode:string;
 
-          <input
-            name="pincode"
-            placeholder="Pincode"
-            value={form.pincode}
-            onChange={handleChange}
-            className="border rounded-lg p-3"
-          />
+landmark?:string;
 
-          <input
-            name="state"
-            placeholder="State"
-            value={form.state}
-            onChange={handleChange}
-            className="border rounded-lg p-3"
-          />
+};
 
-          <input
-            name="city"
-            placeholder="City"
-            value={form.city}
-            onChange={handleChange}
-            className="border rounded-lg p-3"
-          />
 
-          <input
-            name="area"
-            placeholder="Area"
-            value={form.area}
-            onChange={handleChange}
-            className="border rounded-lg p-3"
-          />
 
-          <input
-            name="house"
-            placeholder="House / Flat / Building"
-            value={form.house}
-            onChange={handleChange}
-            className="border rounded-lg p-3"
-          />
 
-          <input
-            name="landmark"
-            placeholder="Landmark (Optional)"
-            value={form.landmark}
-            onChange={handleChange}
-            className="border rounded-lg p-3"
-          />
 
-          <button
-            onClick={saveAddress}
-            disabled={loading}
-            className="bg-black text-white py-3 rounded-lg hover:bg-gray-800 disabled:opacity-50"
-          >
-            {loading ? "Saving..." : "Save Address"}
-          </button>
 
-        </div>
 
-      </div>
-    </main>
-  );
+export default function AddressPage(){
+
+
+
+const [addresses,setAddresses] =
+useState<Address[]>([]);
+
+
+
+const [loading,setLoading] =
+useState(true);
+
+
+
+
+
+const [form,setForm] =
+useState({
+
+fullName:"",
+
+mobile:"",
+
+address:"",
+
+area:"",
+
+city:"",
+
+state:"",
+
+country:"India",
+
+pincode:"",
+
+landmark:""
+
+});
+
+
+
+
+
+const [message,setMessage] =
+useState("");
+
+
+
+
+
+
+async function loadAddresses(){
+
+
+try{
+
+
+const res =
+await fetch(
+
+"/api/address",
+
+{
+
+cache:"no-store"
+
+}
+
+);
+
+
+
+const data =
+await res.json();
+
+
+
+
+if(data.success){
+
+setAddresses(
+data.addresses || []
+);
+
+}
+
+
+
+}
+catch(error){
+
+
+console.log(error);
+
+
+}
+finally{
+
+
+setLoading(false);
+
+
+}
+
+
+}
+
+
+
+
+
+
+
+useEffect(()=>{
+
+
+loadAddresses();
+
+
+},[]);
+
+
+
+
+
+
+
+
+
+function handleChange(
+
+e:React.ChangeEvent<HTMLInputElement>
+
+){
+
+
+setForm({
+
+...form,
+
+[e.target.name]:
+
+e.target.value
+
+});
+
+
+}
+
+
+
+
+
+
+
+
+
+async function addAddress(){
+
+
+try{
+
+
+const res =
+await fetch(
+
+"/api/address",
+
+{
+
+
+method:"POST",
+
+
+headers:{
+
+
+"Content-Type":
+"application/json"
+
+
+},
+
+
+
+body:JSON.stringify(form)
+
+
+
+}
+
+);
+
+
+
+const data =
+await res.json();
+
+
+
+
+
+if(data.success){
+
+
+setMessage(
+"Address added successfully"
+);
+
+
+setForm({
+
+fullName:"",
+
+mobile:"",
+
+address:"",
+
+area:"",
+
+city:"",
+
+state:"",
+
+country:"India",
+
+pincode:"",
+
+landmark:""
+
+});
+
+
+loadAddresses();
+
+
+}
+else{
+
+
+setMessage(
+data.message
+);
+
+
+}
+
+
+
+}
+catch(error){
+
+
+console.log(error);
+
+
+}
+
+
+
+}
+
+
+
+
+
+
+
+
+
+async function deleteAddress(id:string){
+
+
+
+const res =
+await fetch(
+
+`/api/address/${id}`,
+
+{
+
+method:"DELETE"
+
+}
+
+);
+
+
+
+const data =
+await res.json();
+
+
+
+if(data.success){
+
+
+loadAddresses();
+
+
+}
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+if(loading){
+
+
+return(
+
+<div className="
+min-h-screen
+flex
+items-center
+justify-center
+">
+
+Loading...
+
+
+</div>
+
+);
+
+
+}
+
+
+
+
+
+
+
+return(
+
+
+<main className="
+max-w-6xl
+mx-auto
+px-6
+py-10
+">
+
+
+
+
+
+<h1 className="
+text-4xl
+font-bold
+mb-8
+">
+
+My Addresses
+
+</h1>
+
+
+
+
+
+
+
+
+<div className="
+bg-white
+shadow
+rounded-xl
+p-6
+mb-10
+">
+
+
+<h2 className="
+text-2xl
+font-bold
+mb-5
+">
+
+Add New Address
+
+</h2>
+
+
+
+
+
+
+
+<div className="
+grid
+md:grid-cols-2
+gap-4
+">
+
+
+
+{
+
+Object.keys(form).map((key)=>(
+
+
+<input
+
+key={key}
+
+name={key}
+
+value={(form as any)[key]}
+
+onChange={handleChange}
+
+placeholder={key}
+
+className="
+border
+rounded-lg
+p-3
+"
+
+/>
+
+
+))
+
+
+}
+
+
+
+
+
+</div>
+
+
+
+
+
+
+<button
+
+onClick={addAddress}
+
+className="
+mt-5
+bg-black
+text-white
+px-6
+py-3
+rounded-lg
+"
+
+>
+
+Save Address
+
+</button>
+
+
+
+
+
+{
+
+message &&
+
+<p className="
+mt-3
+font-semibold
+">
+
+{message}
+
+</p>
+
+
+}
+
+
+
+
+</div>
+
+
+
+
+
+
+
+
+
+<div className="
+space-y-5
+">
+
+
+
+{
+
+addresses.map((item)=>(
+
+
+
+<div
+
+key={item._id}
+
+className="
+bg-white
+shadow
+rounded-xl
+p-6
+"
+
+>
+
+
+
+<h2 className="
+text-xl
+font-bold
+">
+
+{item.fullName}
+
+</h2>
+
+
+
+
+<p>
+
+{item.mobile}
+
+</p>
+
+
+
+
+<p className="mt-3">
+
+{item.address}
+
+</p>
+
+
+
+<p>
+
+{item.area}
+
+</p>
+
+
+
+
+<p>
+
+{item.city},
+
+{item.state}
+
+</p>
+
+
+
+
+<p>
+
+{item.country}
+
+-
+
+{item.pincode}
+
+</p>
+
+
+
+
+
+{
+
+item.landmark &&
+
+<p>
+
+Landmark:
+{item.landmark}
+
+</p>
+
+}
+
+
+
+
+<button
+
+onClick={()=>
+deleteAddress(item._id)
+}
+
+className="
+mt-5
+bg-red-600
+text-white
+px-5
+py-2
+rounded
+"
+
+>
+
+Delete
+
+</button>
+
+
+
+
+
+
+</div>
+
+
+
+))
+
+
+}
+
+
+
+</div>
+
+
+
+
+
+
+
+
+</main>
+
+
+);
+
+
+
 }

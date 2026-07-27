@@ -1,6 +1,5 @@
 "use client";
 
-import Navbar from "@/components/Navbar/Navbar";
 import Footer from "@/components/Footer/Footer";
 import Image from "next/image";
 import Link from "next/link";
@@ -19,7 +18,7 @@ export default function WishlistPage() {
   return (
 
     <>
-      <Navbar />
+   
 
 
       <main className="max-w-7xl mx-auto px-6 py-10">

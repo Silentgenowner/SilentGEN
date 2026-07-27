@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-import Navbar from "@/components/Navbar/Navbar";
 import Footer from "@/components/Footer/Footer";
 
 export default function RegisterPage() {
@@ -55,7 +54,6 @@ export default function RegisterPage() {
 
   return (
     <>
-      <Navbar />
 
       <main className="min-h-screen flex items-center justify-center px-6 py-10">
         <div className="w-full max-w-md border rounded-xl p-8 shadow-lg">

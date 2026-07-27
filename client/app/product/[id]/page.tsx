@@ -1,99 +1,202 @@
-import Image from "next/image";
-import { notFound } from "next/navigation";
-import { products } from "@/Data/products";
+"use client";
 
-type Props = {
-  params: Promise<{
-    id: string;
-  }>;
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+
+import ProductGallery from "@/components/Product/ProductGallery";
+import ProductInfo from "@/components/Product/ProductInfo";
+import ProductActions from "@/components/Product/ProductActions";
+import ProductTabs from "@/components/Product/ProductTabs";
+import RelatedProducts, {
+  RelatedProduct,
+} from "@/components/Product/RelatedProducts";
+
+type Product = {
+  _id: string;
+  sku: string;
+  name: string;
+  slug: string;
+
+  shortDescription: string;
+  description: string;
+
+  category: string;
+  subCategory: string;
+  brand: string;
+
+  gender: string;
+  fabric: string;
+  fit: string;
+
+  gsm: number;
+  weight: number;
+
+  mrp: number;
+  price: number;
+  discount: number;
+
+  stock: number;
+
+  thumbnail: string;
+  images: string[];
+
+  sizes: string[];
+  colors: string[];
+
+  rating: number;
+  reviewCount: number;
 };
 
+export default function ProductDetailsPage() {
+  const params = useParams();
+  const id = params.id as string;
 
-export default async function ProductDetails({ params }: Props) {
+  const [loading, setLoading] = useState(true);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [related, setRelated] = useState<RelatedProduct[]>([]);
 
-  const { id } = await params;
+  useEffect(() => {
+    if (id) {
+      fetchProduct();
+    }
+  }, [id]);
 
+  async function fetchProduct() {
+    try {
+      setLoading(true);
 
-  const product = products.find(
-    (item) => item.id === Number(id)
-  );
+      const res = await fetch(`/api/product/${id}`, {
+        cache: "no-store",
+      });
 
+      const data = await res.json();
 
-  if (!product) {
-    notFound();
+      if (!data.success) {
+        setProduct(null);
+        return;
+      }
+
+      setProduct(data.product);
+
+      if (data.product.category) {
+        fetchRelated(data.product.category);
+      }
+    } catch (error) {
+      console.error(error);
+      setProduct(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
+  async function fetchRelated(category: string) {
+    try {
+      const res = await fetch(
+        `/api/product?category=${encodeURIComponent(category)}`,
+        {
+          cache: "no-store",
+        }
+      );
+
+      if (!res.ok) return;
+
+      const data = await res.json();
+
+      if (data.success && Array.isArray(data.products)) {
+        setRelated(
+          data.products.filter(
+            (item: RelatedProduct) =>
+              item._id !== id
+          )
+        );
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="py-24 text-center text-xl">
+        Loading...
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="py-24 text-center">
+        <h2 className="text-2xl font-bold">
+          Product Not Found
+        </h2>
+
+        <p className="mt-2 text-gray-500">
+          This product does not exist.
+        </p>
+      </div>
+    );
+  }
 
   return (
+    <main className="mx-auto max-w-7xl px-4 py-10">
 
-    <main className="min-h-screen bg-gray-100">
+      <div className="grid gap-10 lg:grid-cols-2">
 
-      <div className="max-w-7xl mx-auto px-6 py-12">
+        <ProductGallery
+          images={product.images}
+          thumbnail={product.thumbnail}
+          name={product.name}
+        />
 
+        <div className="space-y-8">
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+          <ProductInfo
+            name={product.name}
+            brand={product.brand}
+            category={product.category}
+            shortDescription={product.shortDescription}
+            price={product.price}
+            mrp={product.mrp}
+            discount={product.discount}
+            rating={product.rating}
+            reviewCount={product.reviewCount}
+            stock={product.stock}
+            fabric={product.fabric}
+            fit={product.fit}
+            gsm={product.gsm}
+            weight={product.weight}
+          />
 
-
-          <div>
-
-            <Image
-              src={product.image}
-              alt={product.name}
-              width={700}
-              height={700}
-              priority
-              className="rounded-xl w-full"
-            />
-
-          </div>
-
-
-
-          <div>
-
-
-            <h1 className="text-4xl font-bold">
-              {product.name}
-            </h1>
-
-
-            <p className="text-3xl font-semibold mt-5">
-              ₹{product.price}
-            </p>
-
-
-            <p className="mt-6 text-gray-600 leading-7">
-              {product.description}
-            </p>
-
-
-            <p className="mt-5">
-              <b>Category:</b> {product.category}
-            </p>
-
-
-            <p className="mt-2">
-              <b>Stock:</b> {product.stock}
-            </p>
-
-
-            <button
-              className="mt-8 bg-black text-white px-8 py-3 rounded-lg"
-            >
-              Add To Cart
-            </button>
-
-
-          </div>
-
+          <ProductActions
+            productId={product._id}
+            stock={product.stock}
+            sizes={product.sizes}
+            colors={product.colors}
+          />
 
         </div>
 
-
       </div>
 
+      <ProductTabs
+        description={product.description}
+        category={product.category}
+        brand={product.brand}
+        fabric={product.fabric}
+        fit={product.fit}
+        gsm={product.gsm}
+        weight={product.weight}
+        sku={product.sku}
+        rating={product.rating}
+        reviewCount={product.reviewCount}
+      />
+
+      {related.length > 0 && (
+        <RelatedProducts
+          products={related.slice(0, 4)}
+        />
+      )}
 
     </main>
-
   );
 }

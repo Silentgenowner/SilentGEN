@@ -1,68 +1,573 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+
 import jwt from "jsonwebtoken";
 
-import connectDB from "@/lib/mongodb";
+import connectDB from "@/lib/connectDB";
 import User from "@/models/User";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
 
-export async function GET(req: Request) {
-  try {
-    await connectDB();
+const JWT_SECRET =
+process.env.JWT_SECRET!;
 
-    const cookie = req.headers.get("cookie") || "";
 
-    const token = cookie
-      .split("; ")
-      .find((item) => item.startsWith("token="))
-      ?.split("=")[1];
 
-    if (!token) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Unauthorized",
-        },
-        {
-          status: 401,
-        }
-      );
-    }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as {
-      id: string;
-      mobile: string;
-    };
 
-    const user = await User.findById(decoded.id).lean();
+// ======================
+// GET PROFILE
+// ======================
 
-    if (!user) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "User not found",
-        },
-        {
-          status: 404,
-        }
-      );
-    }
+export async function GET(
+req:NextRequest
+){
 
-    return NextResponse.json({
-      success: true,
-      user,
-    });
-  } catch (error) {
-    console.error("PROFILE ERROR:", error);
+try{
 
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Unauthorized",
-      },
-      {
-        status: 401,
-      }
-    );
-  }
+
+await connectDB();
+
+
+
+
+const token =
+req.cookies.get("token")?.value;
+
+
+
+
+if(!token){
+
+
+return NextResponse.json(
+
+{
+
+success:false,
+
+message:"Please login first"
+
+},
+
+{
+
+status:401
+
+}
+
+);
+
+}
+
+
+
+
+
+
+let decoded:any;
+
+
+
+try{
+
+
+decoded =
+jwt.verify(
+
+token,
+
+JWT_SECRET
+
+);
+
+
+}
+catch{
+
+
+return NextResponse.json(
+
+{
+
+success:false,
+
+message:"Invalid token"
+
+},
+
+{
+
+status:401
+
+}
+
+);
+
+
+}
+
+
+
+
+
+const userId =
+decoded.id ||
+decoded.userId;
+
+
+
+
+
+const user =
+await User.findById(userId)
+.select("-password");
+
+
+
+
+
+
+if(!user){
+
+
+return NextResponse.json(
+
+{
+
+success:false,
+
+message:"User not found"
+
+},
+
+{
+
+status:404
+
+}
+
+);
+
+
+}
+
+
+
+
+
+
+
+return NextResponse.json(
+
+{
+
+success:true,
+
+user
+
+}
+
+);
+
+
+}
+catch(error:any){
+
+
+
+console.log(
+"PROFILE GET ERROR:",
+error
+);
+
+
+
+return NextResponse.json(
+
+{
+
+success:false,
+
+message:
+error.message ||
+"Something went wrong"
+
+},
+
+{
+
+status:500
+
+}
+
+);
+
+
+}
+
+
+}
+
+
+
+
+
+
+
+
+
+// ======================
+// UPDATE PROFILE
+// ======================
+
+export async function PUT(
+req:NextRequest
+){
+
+try{
+
+
+await connectDB();
+
+
+
+
+
+const token =
+req.cookies.get("token")?.value;
+
+
+
+
+
+if(!token){
+
+
+return NextResponse.json(
+
+{
+
+success:false,
+
+message:"Please login first"
+
+},
+
+{
+
+status:401
+
+}
+
+);
+
+
+}
+
+
+
+
+
+
+
+let decoded:any;
+
+
+
+try{
+
+
+decoded =
+jwt.verify(
+
+token,
+
+JWT_SECRET
+
+);
+
+
+}
+catch{
+
+
+return NextResponse.json(
+
+{
+
+success:false,
+
+message:"Invalid token"
+
+},
+
+{
+
+status:401
+
+}
+
+);
+
+
+}
+
+
+
+
+
+
+const userId =
+decoded.id ||
+decoded.userId;
+
+
+
+
+
+
+const body =
+await req.json();
+
+
+
+
+
+const {
+
+name,
+
+email,
+
+mobile
+
+}=body;
+
+
+
+
+
+
+if(!name || !mobile){
+
+
+return NextResponse.json(
+
+{
+
+success:false,
+
+message:"Name and mobile are required"
+
+},
+
+{
+
+status:400
+
+}
+
+);
+
+
+}
+
+
+
+
+
+
+
+// check duplicate mobile
+
+
+const existingUser =
+await User.findOne({
+
+mobile,
+
+_id:{
+$ne:userId
+}
+
+});
+
+
+
+
+
+if(existingUser){
+
+
+return NextResponse.json(
+
+{
+
+success:false,
+
+message:"Mobile number already registered"
+
+},
+
+{
+
+status:400
+
+}
+
+);
+
+
+}
+
+
+
+
+
+
+
+
+// check duplicate email
+
+if(email){
+
+
+const existingEmail =
+await User.findOne({
+
+email,
+
+_id:{
+$ne:userId
+}
+
+});
+
+
+
+if(existingEmail){
+
+
+return NextResponse.json(
+
+{
+
+success:false,
+
+message:"Email already registered"
+
+},
+
+{
+
+status:400
+
+}
+
+);
+
+
+}
+
+
+}
+
+
+
+
+
+
+
+
+
+const user =
+await User.findByIdAndUpdate(
+
+userId,
+
+{
+
+name,
+
+email,
+
+mobile,
+
+isProfileCompleted:true
+
+},
+
+{
+
+new:true
+
+}
+
+)
+
+.select("-password");
+
+
+
+
+
+
+
+
+return NextResponse.json(
+
+{
+
+success:true,
+
+message:"Profile updated successfully",
+
+user
+
+}
+
+);
+
+
+
+}
+catch(error:any){
+
+
+console.log(
+
+"PROFILE UPDATE ERROR:",
+
+error
+
+);
+
+
+
+
+
+return NextResponse.json(
+
+{
+
+success:false,
+
+message:
+error.message ||
+"Something went wrong"
+
+},
+
+{
+
+status:500
+
+}
+
+);
+
+
+
+}
+
+
 }

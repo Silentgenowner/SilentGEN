@@ -1,72 +1,88 @@
 "use client";
 
+import { Heart } from "lucide-react";
 import { useWishlist } from "@/context/WishlistContext";
 
 type Props = {
-  id: number;
+  id: string;
   name: string;
-  price: number;
+  slug: string;
   image: string;
+  price: number;
+  mrp: number;
 };
 
 export default function WishlistButton({
   id,
   name,
-  price,
+  slug,
   image,
+  price,
+  mrp,
 }: Props) {
-
   const {
-    wishlist,
     addToWishlist,
     removeFromWishlist,
+    isInWishlist,
   } = useWishlist();
 
+  const wishlisted = isInWishlist(id);
 
-  const isWishlisted = wishlist.some(
-    (item) => item.id === id
-  );
+  function handleClick(
+    e: React.MouseEvent<HTMLButtonElement>
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
 
+    if (wishlisted) {
+      removeFromWishlist(id);
+      return;
+    }
+
+    addToWishlist({
+      id,
+      name,
+      slug,
+      image,
+      price,
+      mrp,
+    });
+  }
 
   return (
     <button
       type="button"
-
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (isWishlisted) {
-          removeFromWishlist(id);
-        } else {
-          addToWishlist({
-            id,
-            name,
-            price,
-            image,
-          });
-        }
-      }}
-
+      onClick={handleClick}
+      aria-label={
+        wishlisted
+          ? "Remove from Wishlist"
+          : "Add to Wishlist"
+      }
       className="
         absolute
         top-3
         right-3
         z-20
-        bg-white
-        rounded-full
-        w-11
-        h-11
         flex
         items-center
         justify-center
-        shadow-md
-        text-2xl
+        w-10
+        h-10
+        rounded-full
+        bg-white
+        shadow-lg
         hover:scale-110
-        transition
+        transition-all
       "
     >
-      {isWishlisted ? "❤️" : "🤍"}
+      <Heart
+        size={20}
+        className={
+          wishlisted
+            ? "fill-red-500 text-red-500"
+            : "text-gray-600"
+        }
+      />
     </button>
   );
 }
