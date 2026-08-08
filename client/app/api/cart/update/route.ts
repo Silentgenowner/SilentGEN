@@ -2,26 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 
 import connectDB from "@/lib/connectDB";
+import { calculateCartTotals } from "@/lib/cartTotals";
 import Cart from "@/models/Cart";
 import Product from "@/models/Product";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 
 export async function PATCH(req: NextRequest) {
-
   try {
-
     await connectDB();
 
-    // =====================================
-    // AUTH
-    // =====================================
-
-    const token =
-      req.cookies.get("token")?.value;
+    const token = req.cookies.get("token")?.value;
 
     if (!token) {
-
       return NextResponse.json(
         {
           success: false,
@@ -31,64 +24,34 @@ export async function PATCH(req: NextRequest) {
           status: 401,
         }
       );
-
     }
 
-    let decoded: any;
+    let decoded: { id: string };
 
     try {
-
-      decoded = jwt.verify(
-        token,
-        JWT_SECRET
-      );
-
-    }
-    catch {
-
+      decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+    } catch {
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid token",
+          message: "Please login first",
         },
         {
           status: 401,
         }
       );
-
     }
 
-    const userId =
-      decoded.id ||
-      decoded.userId;
-
-    if (!userId) {
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "User not found",
-        },
-        {
-          status: 401,
-        }
-      );
-
-    }
-
-    // =====================================
-    // REQUEST BODY
-    // =====================================
+    const body = await req.json();
 
     const {
       productId,
       size = "",
       color = "",
       action,
-    } = await req.json();
+    } = body;
 
     if (!productId) {
-
       return NextResponse.json(
         {
           success: false,
@@ -98,37 +61,29 @@ export async function PATCH(req: NextRequest) {
           status: 400,
         }
       );
-
     }
 
     if (
       action !== "increase" &&
       action !== "decrease"
     ) {
-
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid action",
+          message:
+            "Action must be increase or decrease",
         },
         {
           status: 400,
         }
       );
-
     }
 
-    // =====================================
-    // FIND CART
-    // =====================================
-
-    const cart =
-      await Cart.findOne({
-        userId,
-      });
+    const cart = await Cart.findOne({
+      userId: decoded.id,
+    });
 
     if (!cart) {
-
       return NextResponse.json(
         {
           success: false,
@@ -138,19 +93,16 @@ export async function PATCH(req: NextRequest) {
           status: 404,
         }
       );
-
     }
 
-    const item =
-      cart.items.find(
-        (item: any) =>
-          item.productId.toString() === productId &&
-          (item.size || "") === size &&
-          (item.color || "") === color
-      );
+    const item = cart.items.find(
+      (item: any) =>
+        item.productId.toString() === productId &&
+        (item.size || "") === size &&
+        (item.color || "") === color
+    );
 
     if (!item) {
-
       return NextResponse.json(
         {
           success: false,
@@ -160,25 +112,13 @@ export async function PATCH(req: NextRequest) {
           status: 404,
         }
       );
-
     }
-        // =====================================
-    // LOAD PRODUCT
-    // =====================================
 
-    const product = await Product.findById(productId).select(
-      `
-      name
-      price
-      stock
-      status
-      sizes
-      colors
-      `
+    const product = await Product.findById(
+      productId
     );
 
     if (!product) {
-
       return NextResponse.json(
         {
           success: false,
@@ -188,122 +128,48 @@ export async function PATCH(req: NextRequest) {
           status: 404,
         }
       );
-
     }
-
-    // =====================================
-    // PRODUCT STATUS
-    // =====================================
 
     if (
-      product.status === "Draft" ||
-      product.status === "Archived"
+      product.status !== "Active" ||
+      product.stock <= 0
     ) {
-
       return NextResponse.json(
         {
           success: false,
-          message: "This product is not available",
+          message:
+            "Product is unavailable",
         },
         {
           status: 400,
         }
       );
-
     }
 
-    // =====================================
-    // SIZE VALIDATION
-    // =====================================
-
-    if (
-      size &&
-      product.sizes.length > 0 &&
-      !product.sizes.includes(size)
-    ) {
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid size selected",
-        },
-        {
-          status: 400,
-        }
-      );
-
-    }
-
-    // =====================================
-    // COLOR VALIDATION
-    // =====================================
-
-    if (
-      color &&
-      product.colors.length > 0 &&
-      !product.colors.includes(color)
-    ) {
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid color selected",
-        },
-        {
-          status: 400,
-        }
-      );
-
-    }
-
-    // =====================================
-    // STOCK CHECK
-    // =====================================
-
-    if (product.stock <= 0) {
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Product is out of stock",
-        },
-        {
-          status: 400,
-        }
-      );
-
-    }
-
-    // =====================================
-    // UPDATE QUANTITY
-    // =====================================
-
+    item.price = product.price;
+    item.stock = product.stock;
+    item.status = product.status;
+    item.image = product.thumbnail;
+    item.name = product.name;
+    item.brand = product.brand;
+    item.category = product.category;
+    item.sku = product.sku;
     if (action === "increase") {
-
       if (item.quantity >= product.stock) {
-
         return NextResponse.json(
           {
             success: false,
-            message: `Only ${product.stock} item(s) available`,
+            message: `Only ${product.stock} item(s) available in stock`,
           },
           {
             status: 400,
           }
         );
-
       }
 
       item.quantity += 1;
-
     } else {
-
-      if (item.quantity > 1) {
-
-        item.quantity -= 1;
-
-      } else {
-
+      if (item.quantity <= 1) {
         cart.items = cart.items.filter(
           (cartItem: any) =>
             !(
@@ -312,72 +178,29 @@ export async function PATCH(req: NextRequest) {
               (cartItem.color || "") === color
             )
         );
-
+      } else {
+        item.quantity -= 1;
       }
-
     }
-
-    // =====================================
-    // KEEP CART DATA UPDATED
-    // =====================================
-
-    item.price = product.price;
-    item.name = product.name;
-        // =====================================
-    // UPDATE IMAGE
-    // =====================================
-
-    item.image =
-      product.thumbnail ||
-      product.images?.[0] ||
-      "/images/no-image.png";
-
-    // =====================================
-    // SAVE CART
-    // =====================================
 
     await cart.save();
 
-    // =====================================
-    // CALCULATE TOTALS
-    // =====================================
+    const totals = calculateCartTotals(cart.items);
 
-    let totalItems = 0;
-    let subtotal = 0;
+    return NextResponse.json({
+      success: true,
+      message: "Cart updated successfully",
 
-    for (const cartItem of cart.items) {
+      items: cart.items,
 
-      totalItems += cartItem.quantity;
-
-      subtotal +=
-        cartItem.price *
-        cartItem.quantity;
-
-    }
-
-    // =====================================
-    // SUCCESS
-    // =====================================
-
-    return NextResponse.json(
-      {
-        success: true,
-
-        message: "Cart updated successfully",
-
-        cart: {
-          items: cart.items,
-          totalItems,
-          subtotal,
-        },
+      summary: {
+        totalItems: totals.totalItems,
+        subtotal: totals.subtotal,
+        shipping: totals.shipping,
+        grandTotal: totals.grandTotal,
       },
-      {
-        status: 200,
-      }
-    );
-
+    });
   } catch (error: any) {
-
     console.error(
       "UPDATE CART ERROR:",
       error
@@ -386,16 +209,13 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-
         message:
           error.message ||
-          "Failed to update cart",
+          "Internal Server Error",
       },
       {
         status: 500,
       }
     );
-
   }
-
 }

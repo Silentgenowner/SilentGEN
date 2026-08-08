@@ -1,43 +1,29 @@
 import jwt from "jsonwebtoken";
 
+function getJwtSecret() {
+  const jwtSecret = process.env.JWT_SECRET;
 
-const JWT_SECRET =
-  process.env.JWT_SECRET || "silentgen_secret_key";
+  if (!jwtSecret) {
+    throw new Error(
+      "Missing JWT_SECRET. Add it to your environment or .env.local. See .env.example for the expected format."
+    );
+  }
 
-
-
-export function createToken(
-  payload:any
-){
-
-  return jwt.sign(
-    payload,
-    JWT_SECRET,
-    {
-      expiresIn:"7d"
-    }
-  );
-
+  return jwtSecret;
 }
 
 
 
-export function verifyToken(
-  token:string
-){
+export function createToken(payload: any) {
+  return jwt.sign(payload, getJwtSecret(), {
+    expiresIn: "7d",
+  });
+}
 
-  try{
-
-    return jwt.verify(
-      token,
-      JWT_SECRET
-    );
-
-  }
-  catch{
-
+export function verifyToken(token: string) {
+  try {
+    return jwt.verify(token, getJwtSecret());
+  } catch {
     return null;
-
   }
-
 }

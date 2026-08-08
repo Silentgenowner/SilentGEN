@@ -1,11 +1,15 @@
 import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI as string;
+const MONGODB_URI = process.env.MONGODB_URI as string | undefined;
 
-if (!MONGODB_URI) {
-  throw new Error(
-    "Please add MONGODB_URI in .env.local"
-  );
+function getMongoUri() {
+  if (!MONGODB_URI) {
+    throw new Error(
+      "Missing MONGODB_URI. Add it to your environment or .env.local. See .env.example for the expected format."
+    );
+  }
+
+  return MONGODB_URI;
 }
 
 declare global {
@@ -39,6 +43,7 @@ if (!cached) {
 
 
 export default async function connectDB() {
+  const mongoUri = getMongoUri();
 
   if (cached!.conn) {
     return cached!.conn;
@@ -48,7 +53,7 @@ export default async function connectDB() {
   if (!cached!.promise) {
 
     cached!.promise = mongoose.connect(
-      MONGODB_URI,
+      mongoUri,
       {
         dbName: "SilentGEN",
       }

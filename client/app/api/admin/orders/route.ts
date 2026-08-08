@@ -2,66 +2,52 @@ import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 
 import connectDB from "@/lib/connectDB";
-
 import Order from "@/models/Order";
-
+import User from "@/models/User";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
-
-
 
 export async function GET(
   req: NextRequest
 ) {
 
-
   try {
-
 
     await connectDB();
 
-
-
-
-    // =========================
-    // ADMIN AUTH CHECK
-    // =========================
-
+    // ==========================
+    // AUTH CHECK
+    // ==========================
 
     const token =
-      req.cookies.get("adminToken")?.value;
+      req.cookies.get("token")?.value;
 
-
-
-    if(!token){
-
+    if (!token) {
 
       return NextResponse.json(
 
         {
-          success:false,
-          message:"Admin login required",
+
+          success: false,
+
+          message:
+            "Please login first",
+
         },
 
         {
-          status:401,
+
+          status: 401,
+
         }
 
       );
 
-
     }
 
+    let decoded: any;
 
-
-
-
-    let decoded:any;
-
-
-
-    try{
-
+    try {
 
       decoded =
         jwt.verify(
@@ -69,118 +55,266 @@ export async function GET(
           JWT_SECRET
         );
 
-
-    }
-    catch{
-
+    } catch {
 
       return NextResponse.json(
 
         {
-          success:false,
-          message:"Invalid admin token",
+
+          success: false,
+
+          message:
+            "Invalid token",
+
         },
 
         {
-          status:401,
+
+          status: 401,
+
         }
 
       );
 
+    }
+
+    const adminId =
+      decoded.id ||
+      decoded.userId;
+
+    if (!adminId) {
+
+      return NextResponse.json(
+
+        {
+
+          success: false,
+
+          message:
+            "Unauthorized",
+
+        },
+
+        {
+
+          status: 401,
+
+        }
+
+      );
 
     }
 
+    // ==========================
+    // CHECK ADMIN
+    // ==========================
 
+    const admin =
+      await User.findById(adminId);
 
+    if (!admin) {
 
+      return NextResponse.json(
 
+        {
 
+          success: false,
 
-    // =========================
+          message:
+            "Admin not found",
+
+        },
+
+        {
+
+          status: 404,
+
+        }
+
+      );
+
+    }
+
+    if (admin.role !== "admin") {
+
+      return NextResponse.json(
+
+        {
+
+          success: false,
+
+          message:
+            "Access denied",
+
+        },
+
+        {
+
+          status: 403,
+
+        }
+
+      );
+
+    }
+    // ==========================
+    // QUERY PARAMS
+    // ==========================
+
+    const search =
+      req.nextUrl.searchParams
+        .get("search") || "";
+
+    const status =
+      req.nextUrl.searchParams
+        .get("status") || "";
+
+    const filter: any = {};
+
+    if (status) {
+
+      filter.orderStatus = status;
+
+    }
+
+    // ==========================
     // GET ORDERS
-    // =========================
+    // ==========================
 
+    let orders =
+      await Order.find(filter)
 
+        .populate({
 
-    const orders =
+          path: "user",
 
-      await Order.find()
+          select:
+            "name email mobile phone",
 
-      .populate(
-        "user",
-        "name email mobile"
-      )
+        })
 
-      .sort({
+        .populate({
 
-        createdAt:-1,
+          path: "items.product",
 
-      });
+        })
 
+        .sort({
 
+          createdAt: -1,
 
+        })
 
+        .lean();
 
+    // ==========================
+    // SEARCH FILTER
+    // ==========================
 
+    if (search.trim()) {
 
+      const keyword =
+        search.toLowerCase();
+
+      orders = orders.filter(
+        (order: any) => {
+
+          const user =
+            order.user || {};
+
+          const customerName =
+            (
+              user.name || ""
+            ).toLowerCase();
+
+          const customerEmail =
+            (
+              user.email || ""
+            ).toLowerCase();
+
+          const customerPhone =
+            (
+              user.mobile ||
+              user.phone ||
+              ""
+            ).toLowerCase();
+
+          const orderId =
+            String(order._id)
+              .toLowerCase();
+
+          return (
+
+            customerName.includes(keyword) ||
+
+            customerEmail.includes(keyword) ||
+
+            customerPhone.includes(keyword) ||
+
+            orderId.includes(keyword)
+
+          );
+
+        }
+
+      );
+
+    }
+    // ==========================
+    // SUCCESS RESPONSE
+    // ==========================
 
     return NextResponse.json(
 
       {
 
-        success:true,
+        success: true,
 
-        count:
-        orders.length,
+        totalOrders:
+          orders.length,
 
         orders,
 
       },
 
       {
-        status:200,
+
+        status: 200,
+
       }
 
     );
 
-
-
-
-
-
-
-  }
-  catch(error:any){
-
-
+  } catch (error: any) {
 
     console.log(
+
       "ADMIN ORDERS ERROR:",
+
       error
+
     );
-
-
 
     return NextResponse.json(
 
       {
 
-        success:false,
+        success: false,
 
         message:
-        error.message ||
-        "Failed to fetch orders",
+          error.message ||
+          "Something went wrong",
 
       },
 
       {
-        status:500,
+
+        status: 500,
+
       }
 
     );
 
-
   }
-
 
 }

@@ -1,23 +1,42 @@
-import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { NextRequest, NextResponse } from "next/server";
 
 import connectDB from "@/lib/connectDB";
+import { createToken } from "@/lib/jwt";
 import OTP from "@/models/OTP";
 import User from "@/models/User";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+function normalizeMobile(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
 
-export async function POST(req: Request) {
+  const mobile = value.replace(/\D/g, "");
+
+  if (!/^[6-9]\d{9}$/.test(mobile)) {
+    return null;
+  }
+
+  return mobile;
+}
+
+export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
-    const { mobile, otp } = await req.json();
+    const body = await req.json();
 
-    if (!mobile || !otp) {
+    const mobile = normalizeMobile(body?.mobile);
+    const otp =
+      typeof body?.otp === "string"
+        ? body.otp.replace(/\D/g, "")
+        : "";
+
+    if (!mobile) {
       return NextResponse.json(
         {
           success: false,
-          message: "Mobile and OTP are required",
+          message:
+            "Valid mobile number is required.",
         },
         {
           status: 400,
@@ -25,15 +44,34 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!/^\d{6}$/.test(otp)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Enter a valid 6 digit OTP.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    /*
+     * Find latest OTP for this mobile.
+     */
     const otpData = await OTP.findOne({
       mobile,
+    }).sort({
+      createdAt: -1,
     });
 
     if (!otpData) {
       return NextResponse.json(
         {
           success: false,
-          message: "OTP not found",
+          message:
+            "OTP not found. Please request a new OTP.",
         },
         {
           status: 400,
@@ -41,7 +79,13 @@ export async function POST(req: Request) {
       );
     }
 
-    if (otpData.expiresAt < new Date()) {
+    /*
+     * Check OTP expiry.
+     */
+    if (
+      !otpData.expiresAt ||
+      otpData.expiresAt.getTime() <= Date.now()
+    ) {
       await OTP.deleteMany({
         mobile,
       });
@@ -49,7 +93,8 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "OTP Expired",
+          message:
+            "OTP has expired. Please request a new OTP.",
         },
         {
           status: 400,
@@ -57,11 +102,15 @@ export async function POST(req: Request) {
       );
     }
 
+    /*
+     * Verify OTP.
+     */
     if (otpData.otp !== otp) {
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid OTP",
+          message:
+            "Invalid OTP. Please enter the correct OTP.",
         },
         {
           status: 400,
@@ -69,67 +118,122 @@ export async function POST(req: Request) {
       );
     }
 
+    /*
+     * Find existing customer.
+     */
     let user = await User.findOne({
       mobile,
     });
 
+    /*
+     * Create customer if first login.
+     */
     if (!user) {
       user = await User.create({
         mobile,
         name: "New User",
-        isProfileCompleted:false,
+        isProfileCompleted: false,
         isVerified: true,
         lastLogin: new Date(),
       });
     } else {
+      /*
+       * Blocked customer cannot login.
+       */
+      if (user.isBlocked) {
+        await OTP.deleteMany({
+          mobile,
+        });
+
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "Your account has been blocked. Please contact support.",
+          },
+          {
+            status: 403,
+          }
+        );
+      }
+
       user.isVerified = true;
       user.lastLogin = new Date();
 
       await user.save();
     }
 
+    /*
+     * OTP can be used only once.
+     */
     await OTP.deleteMany({
       mobile,
     });
 
-    const token = jwt.sign(
-      {
-        id: user._id.toString(),
-        mobile: user.mobile,
-        role: user.role,
-      },
-      JWT_SECRET,
-      {
-        expiresIn: "7d",
-      }
-    );
+    /*
+     * Create SilentGEN JWT.
+     */
+    const token = createToken({
+      id: user._id.toString(),
+      mobile: user.mobile,
+      role: user.role,
+    });
 
     const profileRequired =
       !user.isProfileCompleted;
 
     const response = NextResponse.json({
       success: true,
-      message: "Login Successful",
+      message: "Login successful.",
+
       profileRequired,
-      user,
+
+      user: {
+        _id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        mobile: user.mobile,
+        role: user.role,
+        isVerified: user.isVerified,
+        isProfileCompleted:
+          user.isProfileCompleted,
+      },
     });
 
-    response.cookies.set("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
+    /*
+     * Store JWT in HTTP-only cookie.
+     */
+    response.cookies.set(
+      "token",
+      token,
+      {
+        httpOnly: true,
+
+        secure:
+          process.env.NODE_ENV ===
+          "production",
+
+        sameSite: "lax",
+
+        path: "/",
+
+        maxAge:
+          60 * 60 * 24 * 7,
+      }
+    );
 
     return response;
   } catch (error) {
-    console.error("VERIFY OTP ERROR:", error);
+    console.error(
+      "VERIFY OTP ERROR:",
+      error
+    );
 
     return NextResponse.json(
       {
         success: false,
-        message: "Server Error",
+        message:
+          "Unable to verify OTP. Please try again.",
       },
       {
         status: 500,

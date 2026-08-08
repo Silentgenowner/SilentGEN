@@ -1,21 +1,42 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
+export interface ICartItem {
+  productId: mongoose.Types.ObjectId;
+
+  sku: string;
+
+  name: string;
+
+  brand: string;
+
+  category: string;
+
+  image: string;
+
+  price: number;
+
+  stock: number;
+
+  status: string;
+
+  quantity: number;
+
+  size?: string;
+
+  color?: string;
+}
+
 export interface ICart extends Document {
   userId: mongoose.Types.ObjectId;
-  items: {
-    productId: mongoose.Types.ObjectId;
-    name: string;
-    image: string;
-    price: number;
-    quantity: number;
-    size?: string;
-    color?: string;
-  }[];
+
+  items: ICartItem[];
+
   createdAt: Date;
+
   updatedAt: Date;
 }
 
-const CartItemSchema = new Schema(
+const CartItemSchema = new Schema<ICartItem>(
   {
     productId: {
       type: Schema.Types.ObjectId,
@@ -23,9 +44,28 @@ const CartItemSchema = new Schema(
       required: true,
     },
 
+    sku: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     name: {
       type: String,
       required: true,
+      trim: true,
+    },
+
+    brand: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    category: {
+      type: String,
+      default: "",
+      trim: true,
     },
 
     image: {
@@ -36,6 +76,23 @@ const CartItemSchema = new Schema(
     price: {
       type: Number,
       required: true,
+      min: 0,
+    },
+
+    stock: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    status: {
+      type: String,
+      default: "Active",
+      enum: [
+        "Active",
+        "Inactive",
+        "Draft",
+      ],
     },
 
     quantity: {
@@ -47,11 +104,13 @@ const CartItemSchema = new Schema(
     size: {
       type: String,
       default: "",
+      trim: true,
     },
 
     color: {
       type: String,
       default: "",
+      trim: true,
     },
   },
   {
@@ -59,13 +118,14 @@ const CartItemSchema = new Schema(
   }
 );
 
-
 const CartSchema = new Schema<ICart>(
   {
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      unique: true,
+      index: true,
     },
 
     items: {
@@ -78,22 +138,8 @@ const CartSchema = new Schema<ICart>(
   }
 );
 
-
-// Same user + same product + same size + same color
-// duplicate cart item prevent કરવા માટે
-CartSchema.index(
-  {
-    userId: 1,
-    "items.productId": 1,
-    "items.size": 1,
-    "items.color": 1,
-  }
-);
-
-
 const Cart: Model<ICart> =
   mongoose.models.Cart ||
   mongoose.model<ICart>("Cart", CartSchema);
-
 
 export default Cart;

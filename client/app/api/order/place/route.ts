@@ -1,751 +1,782 @@
 import { NextRequest, NextResponse } from "next/server";
-
+import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 
 import connectDB from "@/lib/connectDB";
+import { calculateCartTotals } from "@/lib/cartTotals";
+import { createInvoiceFromOrder } from "@/lib/createInvoiceFromOrder";
 
 import Cart from "@/models/Cart";
 import Product from "@/models/Product";
 import Order from "@/models/Order";
 
 
-
 const JWT_SECRET =
-process.env.JWT_SECRET!;
+  process.env.JWT_SECRET!;
 
 
-
-
+/*
+|--------------------------------------------------------------------------
+| PLACE ORDER
+|--------------------------------------------------------------------------
+*/
 
 export async function POST(
-req:NextRequest
-){
+  req: NextRequest
+) {
 
+  const session =
+    await mongoose.startSession();
 
-try{
 
+  try {
 
-await connectDB();
+    /*
+    |--------------------------------------------------------------------------
+    | DATABASE
+    |--------------------------------------------------------------------------
+    */
 
+    await connectDB();
 
 
+    session.startTransaction();
 
 
-// =======================
-// AUTH CHECK
-// =======================
+    /*
+    |--------------------------------------------------------------------------
+    | AUTH CHECK
+    |--------------------------------------------------------------------------
+    */
 
+    const token =
+      req.cookies.get("token")?.value;
 
-const token =
-req.cookies.get("token")?.value;
 
+    if (!token) {
 
-
-if(!token){
-
-
-return NextResponse.json(
-
-{
-
-success:false,
-
-message:"Please login first"
-
-},
-
-{
-
-status:401
-
-}
-
-);
-
-
-}
-
-
-
-
-
-
-let decoded:any;
-
-
-
-try{
-
-
-decoded =
-jwt.verify(
-token,
-JWT_SECRET
-);
-
-
-
-}
-
-catch{
-
-
-return NextResponse.json(
-
-{
-
-success:false,
-
-message:"Invalid token"
-
-},
-
-{
-
-status:401
-
-}
-
-);
-
-
-}
-
-
-
-
-
-
-const userId =
-decoded.id ||
-decoded.userId;
-
-
-
-
-
-if(!userId){
-
-
-return NextResponse.json(
-
-{
-
-success:false,
-
-message:"User not found"
-
-},
-
-{
-
-status:401
-
-}
-
-);
-
-
-}
-
-
-
-
-
-
-
-
-// =======================
-// REQUEST DATA
-// =======================
-
-
-const body =
-await req.json();
-
-
-
-
-const {
-
-shippingAddress,
-
-paymentMethod="COD"
-
-}=body;
-
-
-
-
-
-
-
-if(
-
-paymentMethod !== "COD"
-
-&&
-
-paymentMethod !== "ONLINE"
-
-){
-
-
-return NextResponse.json(
-
-{
-
-success:false,
-
-message:"Invalid payment method"
-
-},
-
-{
-
-status:400
-
-}
-
-);
-
-
-}
-
-
-
-
-
-
-
-if(!shippingAddress){
-
-
-return NextResponse.json(
-
-{
-
-success:false,
-
-message:"Shipping address required"
-
-},
-
-{
-
-status:400
-
-}
-
-);
-
-
-}
-
-
-
-
-
-
-
-
-
-// =======================
-// CART
-// =======================
-
-
-
-const cart =
-await Cart.findOne({
-
-userId
-
-});
-
-
-
-
-
-if(
-!cart ||
-cart.items.length===0
-){
-
-
-return NextResponse.json(
-
-{
-
-success:false,
-
-message:"Cart is empty"
-
-},
-
-{
-
-status:400
-
-}
-
-);
-
-
-}
-
-
-// =======================
-// STOCK CHECK + ORDER ITEMS
-// =======================
-
-
-let subtotal = 0;
-
-
-const orderItems:any[] = [];
-
-
-
-
-for(const item of cart.items){
-
-
-
-  const product =
-
-  await Product.findById(
-
-    item.productId
-
-  );
-
-
-
-
-
-  if(!product){
-
-
-    return NextResponse.json(
-
-    {
-
-      success:false,
-
-      message:
-      `${item.name} product not found`
-
-    },
-
-    {
-
-      status:404
+      throw new Error(
+        "Please login first"
+      );
 
     }
 
-    );
 
+    let decoded: {
+      id: string;
+    };
+
+
+    try {
+
+      decoded =
+        jwt.verify(
+          token,
+          JWT_SECRET
+        ) as {
+          id: string;
+        };
+
+    }
+    catch {
+
+      throw new Error(
+        "Please login first"
+      );
+
+    }
+
+
+    const userId =
+      decoded.id;
+
+
+    if (!userId) {
+
+      throw new Error(
+        "Invalid user"
+      );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | REQUEST BODY
+    |--------------------------------------------------------------------------
+    */
+
+    const body =
+      await req.json();
+
+
+    const {
+      shippingAddress,
+      paymentMethod,
+      couponCode = "",
+      couponDiscount = 0,
+    } = body;
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | SHIPPING ADDRESS VALIDATION
+    |--------------------------------------------------------------------------
+    */
+
+    if (!shippingAddress) {
+
+      throw new Error(
+        "Shipping address required"
+      );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | PAYMENT METHOD VALIDATION
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      paymentMethod !== "COD" &&
+      paymentMethod !== "ONLINE"
+    ) {
+
+      throw new Error(
+        "Invalid payment method"
+      );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | GET CART
+    |--------------------------------------------------------------------------
+    */
+
+    const cart =
+      await Cart.findOne({
+        userId,
+      })
+        .session(session);
+
+
+    if (
+      !cart ||
+      !Array.isArray(cart.items) ||
+      cart.items.length === 0
+    ) {
+
+      throw new Error(
+        "Cart is empty"
+      );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | ORDER ITEMS
+    |--------------------------------------------------------------------------
+    */
+
+    let subtotal = 0;
+
+
+    const orderItems: any[] = [];
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | PRODUCT VALIDATION
+    |--------------------------------------------------------------------------
+    */
+
+    for (
+      const item of cart.items
+    ) {
+
+      const product =
+        await Product.findById(
+          item.productId
+        )
+          .session(session);
+
+
+      /*
+      |----------------------------------------------------------------------
+      | PRODUCT NOT FOUND
+      |----------------------------------------------------------------------
+      */
+
+      if (!product) {
+
+        throw new Error(
+          `${item.name || "Product"} not found`
+        );
+
+      }
+
+
+      /*
+      |----------------------------------------------------------------------
+      | PRODUCT STATUS
+      |----------------------------------------------------------------------
+      */
+
+      if (
+        product.status !== "Active" ||
+        product.isDeleted === true
+      ) {
+
+        throw new Error(
+          `${product.name} is currently unavailable`
+        );
+
+      }
+
+
+      /*
+      |----------------------------------------------------------------------
+      | QUANTITY VALIDATION
+      |----------------------------------------------------------------------
+      */
+
+      const quantity =
+        Number(item.quantity);
+
+
+      if (
+        !Number.isInteger(quantity) ||
+        quantity <= 0
+      ) {
+
+        throw new Error(
+          `Invalid quantity for ${product.name}`
+        );
+
+      }
+
+
+      /*
+      |----------------------------------------------------------------------
+      | STOCK VALIDATION
+      |----------------------------------------------------------------------
+      */
+
+      if (
+        product.stock < quantity
+      ) {
+
+        throw new Error(
+          `Only ${product.stock} quantity available for ${product.name}`
+        );
+
+      }
+
+
+      /*
+      |----------------------------------------------------------------------
+      | PRICE
+      |----------------------------------------------------------------------
+      */
+
+      const price =
+        Number(product.price) || 0;
+
+
+      if (price < 0) {
+
+        throw new Error(
+          `Invalid price for ${product.name}`
+        );
+
+      }
+
+
+      /*
+      |----------------------------------------------------------------------
+      | ITEM TOTAL
+      |----------------------------------------------------------------------
+      */
+
+      const itemTotal =
+        price * quantity;
+
+
+      subtotal +=
+        itemTotal;
+
+
+      /*
+      |----------------------------------------------------------------------
+      | ORDER ITEM
+      |----------------------------------------------------------------------
+      */
+
+      orderItems.push({
+
+        product:
+          product._id,
+
+        name:
+          product.name,
+
+        image:
+          product.thumbnail || "",
+
+        price,
+
+        quantity,
+
+        size:
+          item.size || "",
+
+        color:
+          item.color || "",
+
+      });
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | CART TOTALS
+    |--------------------------------------------------------------------------
+    */
+
+    const totals =
+      calculateCartTotals(
+        orderItems
+      );
+
+
+    const shippingCharge =
+      Number(totals.shipping) || 0;
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | COUPON DISCOUNT
+    |--------------------------------------------------------------------------
+    */
+
+    const discount =
+      Math.max(
+        Number(couponDiscount) || 0,
+        0
+      );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | FINAL TOTAL
+    |--------------------------------------------------------------------------
+    */
+
+    const totalAmount =
+      Math.max(
+        Number(totals.subtotal) +
+        shippingCharge -
+        discount,
+        0
+      );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | ORDER NUMBER
+    |--------------------------------------------------------------------------
+    */
+
+    const orderNumber =
+      "SG" +
+      Date.now();
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | CREATE ORDER
+    |--------------------------------------------------------------------------
+    */
+
+    const createdOrders =
+      await Order.create(
+        [
+          {
+
+            /*
+            |--------------------------------------------------------------
+            | USER
+            |--------------------------------------------------------------
+            */
+
+            user:
+              userId,
+
+
+            /*
+            |--------------------------------------------------------------
+            | ITEMS
+            |--------------------------------------------------------------
+            */
+
+            items:
+              orderItems,
+
+
+            /*
+            |--------------------------------------------------------------
+            | SHIPPING
+            |--------------------------------------------------------------
+            */
+
+            shippingAddress,
+
+
+            /*
+            |--------------------------------------------------------------
+            | PAYMENT
+            |--------------------------------------------------------------
+            */
+
+            paymentMethod,
+
+            paymentStatus:
+              "Pending",
+
+
+            /*
+            |--------------------------------------------------------------
+            | ORDER STATUS
+            |--------------------------------------------------------------
+            */
+
+            orderStatus:
+              "Placed",
+
+
+            /*
+            |--------------------------------------------------------------
+            | DELIVERY HISTORY
+            |--------------------------------------------------------------
+            */
+
+            deliveryHistory: [
+
+              {
+
+                status:
+                  "Placed",
+
+                date:
+                  new Date(),
+
+                note:
+                  "Order placed successfully",
+
+              },
+
+            ],
+
+
+            /*
+            |--------------------------------------------------------------
+            | AMOUNTS
+            |--------------------------------------------------------------
+            */
+
+            subtotal:
+
+              Number(totals.subtotal) ||
+              subtotal,
+
+            shippingCharge,
+
+            discount,
+
+            totalAmount,
+
+
+            /*
+            |--------------------------------------------------------------
+            | REFUND
+            |--------------------------------------------------------------
+            */
+
+            refundStatus:
+              "None",
+
+          },
+        ],
+        {
+          session,
+        }
+      );
+
+
+    const order =
+      createdOrders[0];
+
+
+    if (!order) {
+
+      throw new Error(
+        "Order creation failed"
+      );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | UPDATE PRODUCT STOCK
+    |--------------------------------------------------------------------------
+    */
+
+    for (
+      const item of orderItems
+    ) {
+
+      const updated =
+        await Product.updateOne(
+
+          {
+            _id:
+              item.product,
+
+            stock:
+              {
+                $gte:
+                  item.quantity,
+              },
+
+          },
+
+          {
+
+            $inc:
+              {
+
+                stock:
+                  -item.quantity,
+
+                sold:
+                  item.quantity,
+
+              },
+
+          },
+
+          {
+            session,
+          }
+
+        );
+
+
+      /*
+      |--------------------------------------------------------------------
+      | STOCK UPDATE FAILED
+      |--------------------------------------------------------------------
+      */
+
+      if (
+        updated.modifiedCount !== 1
+      ) {
+
+        throw new Error(
+          `${item.name} stock update failed`
+        );
+
+      }
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | CREATE INVOICE AUTOMATICALLY
+    |--------------------------------------------------------------------------
+    |
+    | IMPORTANT:
+    | Invoice is created immediately after Order + Stock update.
+    |
+    */
+
+    const invoice =
+      await createInvoiceFromOrder(
+        order._id,
+        session
+      );
+
+
+    if (!invoice) {
+
+      throw new Error(
+        "Invoice creation failed"
+      );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | CLEAR CART
+    |--------------------------------------------------------------------------
+    */
+
+    cart.items = [];
+
+
+    await cart.save({
+      session,
+    });
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | COMMIT TRANSACTION
+    |--------------------------------------------------------------------------
+    */
+
+    await session.commitTransaction();
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | SUCCESS RESPONSE
+    |--------------------------------------------------------------------------
+    */
+
+    return NextResponse.json(
+
+      {
+
+        success:
+          true,
+
+        message:
+          "Order placed successfully",
+
+        orderId:
+          order._id,
+
+        invoiceId:
+          invoice._id,
+
+        invoiceNumber:
+          invoice.invoiceNumber,
+
+        orderStatus:
+          order.orderStatus,
+
+        paymentStatus:
+          order.paymentStatus,
+
+        totalAmount:
+          order.totalAmount,
+
+      },
+
+      {
+        status:
+          201,
+      }
+
+    );
 
   }
 
 
+  /*
+  |--------------------------------------------------------------------------
+  | ERROR
+  |--------------------------------------------------------------------------
+  */
+
+  catch (error: any) {
 
 
+    /*
+    |----------------------------------------------------------------------
+    | ROLLBACK
+    |----------------------------------------------------------------------
+    */
+
+    if (
+      session.inTransaction()
+    ) {
+
+      await session.abortTransaction();
+
+    }
 
 
+    console.error(
+      "PLACE ORDER ERROR:",
+      error
+    );
 
-  if(product.stock < item.quantity){
 
+    /*
+    |--------------------------------------------------------------------------
+    | ERROR MESSAGE
+    |--------------------------------------------------------------------------
+    */
+
+    const message =
+      error?.message ||
+      "Order failed";
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | RESPONSE STATUS
+    |--------------------------------------------------------------------------
+    */
+
+    const status =
+      message ===
+      "Please login first"
+        ? 401
+        : 500;
 
 
     return NextResponse.json(
 
-    {
+      {
 
-      success:false,
+        success:
+          false,
 
-      message:
-      `${product.name} stock unavailable`
+        message,
 
-    },
+      },
 
-    {
-
-      status:400
-
-    }
+      {
+        status,
+      }
 
     );
-
 
   }
 
 
+  /*
+  |--------------------------------------------------------------------------
+  | END SESSION
+  |--------------------------------------------------------------------------
+  */
 
+  finally {
 
+    await session.endSession();
 
-
-
-  subtotal +=
-
-  item.price *
-
-  item.quantity;
-
-
-
-
-
-
-
-  orderItems.push({
-
-
-    product:item.productId,
-
-
-    name:item.name,
-
-
-    image:item.image,
-
-
-    price:item.price,
-
-
-    quantity:item.quantity,
-
-
-    size:item.size,
-
-
-    color:item.color,
-
-
-  });
-
-
-
-}
-
-
-
-
-
-
-
-
-
-// =======================
-// UPDATE PRODUCT STOCK
-// =======================
-
-
-
-for(const item of cart.items){
-
-
-
-await Product.findByIdAndUpdate(
-
-item.productId,
-
-{
-
-
-$inc:{
-
-
-stock:
--item.quantity,
-
-
-sold:
-item.quantity
-
-
-}
-
-
-
-}
-
-);
-
-
-
-}
-
-
-
-
-
-
-
-
-
-// =======================
-// CREATE ORDER
-// =======================
-
-
-
-const order =
-
-await Order.create({
-
-
-
-user:userId,
-
-
-
-
-
-items:orderItems,
-
-
-
-
-
-shippingAddress:{
-
-fullName:
-shippingAddress.fullName ||
-shippingAddress.name,
-
-mobile:
-shippingAddress.mobile ||
-shippingAddress.phone,
-
-address:
-shippingAddress.address,
-
-area:
-shippingAddress.area ||
-"NA",
-
-city:
-shippingAddress.city,
-
-state:
-shippingAddress.state,
-
-country:
-shippingAddress.country || "India",
-
-pincode:
-shippingAddress.pincode,
-
-landmark:
-shippingAddress.landmark || "",
-
-},
-
-
-
-
-
-
-
-paymentMethod,
-
-
-
-
-
-
-paymentStatus:
-
-paymentMethod === "ONLINE"
-
-?
-
-"Pending"
-
-:
-
-"Pending",
-
-
-
-
-
-
-
-orderStatus:"Placed",
-
-
-
-
-
-
-deliveryHistory:[
-
-
-
-{
-
-
-status:"Placed",
-
-
-date:new Date(),
-
-
-note:"Order placed successfully"
-
-
-
-}
-
-
-
-],
-
-
-
-
-
-
-
-subtotal,
-
-
-
-shippingCharge:0,
-
-
-
-discount:0,
-
-
-
-totalAmount:subtotal,
-
-
-
-refundStatus:"None"
-
-
-
-});
-
-
-
-
-
-
-
-
-
-// =======================
-// CLEAR CART
-// =======================
-
-
-
-cart.items = [];
-
-
-
-await cart.save();
-
-
-
-
-
-
-
-
-
-return NextResponse.json(
-
-{
-
-
-success:true,
-
-
-message:
-"Order placed successfully",
-
-
-
-orderId:
-order._id
-
-
-
-},
-
-
-{
-
-
-status:201
-
-
-}
-
-
-);
-
-
-
-
-
-
-
-}catch(error:any){
-
-
-
-console.log(
-
-"PLACE ORDER ERROR:",
-
-error
-
-);
-
-
-
-
-
-return NextResponse.json(
-
-{
-
-
-success:false,
-
-
-message:
-
-error.message ||
-
-"Something went wrong"
-
-
-
-},
-
-
-{
-
-
-status:500
-
-
-}
-
-
-);
-
-
-
-}
+  }
 
 }

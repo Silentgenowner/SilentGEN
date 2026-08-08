@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar/Navbar";
 import Footer from "@/components/Footer/Footer";
 
 import { CartProvider } from "@/context/CartContext";
+import { UserProvider } from "@/context/UserContext";
 import { WishlistProvider } from "@/context/WishlistContext";
 
 export const metadata: Metadata = {
@@ -21,19 +22,21 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-gray-100 text-black">
 
-        <CartProvider>
+        <UserProvider>
+          <CartProvider>
 
-          <WishlistProvider>
+            <WishlistProvider>
 
-            <Navbar />
+              <Navbar />
 
-            <main>{children}</main>
+              <main>{children}</main>
 
-            <Footer />
+              <Footer />
 
-          </WishlistProvider>
+            </WishlistProvider>
 
-        </CartProvider>
+          </CartProvider>
+        </UserProvider>
 
       </body>
     </html>

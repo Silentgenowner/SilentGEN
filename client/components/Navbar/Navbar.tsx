@@ -45,6 +45,9 @@ export default function Navbar() {
   useState(false);
 
 
+  const [mounted, setMounted] = 
+  useState(false);
+
 
   const [search,setSearch] =
   useState("");
@@ -54,9 +57,11 @@ export default function Navbar() {
 
 
   const {
-    totalItems:cartCount,
-    loadCart,
+    summary,
+    refreshCart,
   } = useCart();
+
+  const cartCount = summary.totalItems;
 
 
 
@@ -105,7 +110,7 @@ export default function Navbar() {
         );
 
 
-        loadCart();
+        refreshCart();
 
 
       }
@@ -116,7 +121,7 @@ export default function Navbar() {
 
         setUserName("");
 
-        loadCart();
+        refreshCart();
 
 
       }
@@ -154,33 +159,19 @@ export default function Navbar() {
 
 
 
-  useEffect(()=>{
+useEffect(() => {
+  setMounted(true);
+}, []);
 
+useEffect(() => {
+  checkLogin();
 
-    checkLogin();
+  window.addEventListener("focus", checkLogin);
 
-
-    window.addEventListener(
-      "focus",
-      checkLogin
-    );
-
-
-
-    return()=>{
-
-
-      window.removeEventListener(
-        "focus",
-        checkLogin
-      );
-
-
-    };
-
-
-  },[]);
-
+  return () => {
+    window.removeEventListener("focus", checkLogin);
+  };
+}, []);
 
 
 
@@ -209,6 +200,10 @@ export default function Navbar() {
     setMobileMenu(false);
 
 
+  }
+
+  if (!mounted) {
+  return null;
   }
 
     return (

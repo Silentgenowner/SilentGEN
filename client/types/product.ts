@@ -1,5 +1,4 @@
 export interface Product {
-
   _id: string;
 
   sku: string;
@@ -73,5 +72,4 @@ export interface Product {
   createdAt: string;
 
   updatedAt: string;
-
 }

@@ -243,6 +243,27 @@ const ProductSchema = new Schema(
     },
 
     // ===========================
+    // Soft Delete
+    // ===========================
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+
+    deletedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "Admin",
+      default: null,
+    },
+
+    // ===========================
     // SEO
     // ===========================
 

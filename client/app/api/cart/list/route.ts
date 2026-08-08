@@ -1,26 +1,23 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
 
 import connectDB from "@/lib/connectDB";
+import { calculateCartTotals } from "@/lib/cartTotals";
 import Cart from "@/models/Cart";
 import Product from "@/models/Product";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-
     await connectDB();
 
-    // ============================
-    // TOKEN
-    // ============================
+    const cookieStore = await cookies();
 
-    const token =
-      req.cookies.get("token")?.value;
+    const token = cookieStore.get("token")?.value;
 
     if (!token) {
-
       return NextResponse.json(
         {
           success: false,
@@ -30,250 +27,154 @@ export async function GET(req: NextRequest) {
           status: 401,
         }
       );
-
     }
 
-    // ============================
-    // VERIFY TOKEN
-    // ============================
-
-    let decoded: any;
+    let decoded: { id: string };
 
     try {
-
-      decoded = jwt.verify(
-        token,
-        JWT_SECRET
-      );
-
+      decoded = jwt.verify(token, JWT_SECRET) as { id: string };
     } catch {
-
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid token",
+          message: "Please login first",
         },
         {
           status: 401,
         }
       );
-
     }
 
-    const userId =
-      decoded.id ||
-      decoded.userId;
-
-    if (!userId) {
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "User not found",
-        },
-        {
-          status: 401,
-        }
-      );
-
-    }
-
-    // ============================
-    // LOAD CART
-    // ============================
-
-    const cart =
-      await Cart.findOne({
-        userId,
-      }).populate({
-        path: "items.productId",
-        select: `
-          name
-          thumbnail
-          images
-          price
-          stock
-          status
-          sizes
-          colors
-        `,
-      });
+    let cart = await Cart.findOne({
+      userId: decoded.id,
+    });
 
     if (!cart) {
-
-      return NextResponse.json({
-        success: true,
+      cart = await Cart.create({
+        userId: decoded.id,
         items: [],
-        totalItems: 0,
-        subtotal: 0,
       });
-
     }
+
+    let cartUpdated = false;
 
     const items: any[] = [];
 
-    let subtotal = 0;
-    let totalItems = 0;
-        let cartChanged = false;
-
     for (const item of cart.items) {
+      const product = await Product.findById(
+        item.productId
+      ).select(
+        `
+        sku
+        name
+        brand
+        category
+        thumbnail
+        price
+        stock
+        status
+        `
+      );
 
-      const product: any = item.productId;
-
-      // ============================
-      // PRODUCT EXISTS ?
-      // ============================
-
+      // Product deleted
       if (!product) {
-        cartChanged = true;
+        cartUpdated = true;
         continue;
       }
 
-      // ============================
-      // PRODUCT STATUS CHECK
-      // ============================
+      // Product inactive
+      if (product.status !== "Active") {
+        cartUpdated = true;
+        continue;
+      }
 
+      // Sync latest product data
+      item.sku = product.sku;
+      item.name = product.name;
+      item.brand = product.brand;
+      item.category = product.category;
+      item.image = product.thumbnail;
+      item.price = product.price;
+      item.stock = product.stock;
+      item.status = product.status;
+
+      // Fix quantity
+      if (item.quantity > product.stock) {
+        item.quantity = product.stock;
+        cartUpdated = true;
+      }
+
+      // Remove zero quantity / stock
       if (
-        product.status === "Draft" ||
-        product.status === "Archived"
+        item.quantity <= 0 ||
+        product.stock <= 0
       ) {
-        cartChanged = true;
+        cartUpdated = true;
         continue;
       }
-
-      // ============================
-      // SIZE VALIDATION
-      // ============================
-
-      if (
-        item.size &&
-        product.sizes?.length > 0 &&
-        !product.sizes.includes(item.size)
-      ) {
-        cartChanged = true;
-        continue;
-      }
-
-      // ============================
-      // COLOR VALIDATION
-      // ============================
-
-      if (
-        item.color &&
-        product.colors?.length > 0 &&
-        !product.colors.includes(item.color)
-      ) {
-        cartChanged = true;
-        continue;
-      }
-
-      // ============================
-      // QUANTITY VALIDATION
-      // ============================
-
-      let quantity = item.quantity;
-
-      if (quantity < 1) {
-        quantity = 1;
-        cartChanged = true;
-      }
-
-      // ============================
-      // STOCK VALIDATION
-      // ============================
-
-      if (product.stock <= 0) {
-        cartChanged = true;
-        continue;
-      }
-
-      if (quantity > product.stock) {
-        quantity = product.stock;
-        cartChanged = true;
-      }
-
-      // ============================
-      // ALWAYS USE LATEST PRODUCT DATA
-      // ============================
-
-      const latestPrice = product.price;
-
-      const latestImage =
-        product.thumbnail ||
-        product.images?.[0] ||
-        "/images/no-image.png";
-
-      subtotal += latestPrice * quantity;
-      totalItems += quantity;
 
       items.push({
-
         productId: product._id,
+
+        sku: product.sku,
 
         name: product.name,
 
-        image: latestImage,
+        brand: product.brand,
 
-        price: latestPrice,
+        category: product.category,
 
-        quantity,
+        image: product.thumbnail,
 
-        size: item.size || "",
-
-        color: item.color || "",
+        price: product.price,
 
         stock: product.stock,
 
-        availableSizes: product.sizes || [],
+        status: product.status,
 
-        availableColors: product.colors || [],
-
-      });
-
-    }
-        // =====================================
-    // SAVE CLEANED CART (optional sync)
-    // =====================================
-
-    if (cartChanged) {
-
-      cart.items = items.map((item) => ({
-        productId: item.productId,
-        name: item.name,
-        image: item.image,
-        price: item.price,
         quantity: item.quantity,
+
         size: item.size,
+
         color: item.color,
-      }));
 
-      await cart.save();
-
+        total:
+          product.price *
+          item.quantity,
+      });
     }
-
-    // =====================================
-    // SUCCESS RESPONSE
-    // =====================================
-
-    return NextResponse.json(
-      {
-        success: true,
-
-        items,
-
-        totalItems,
-
-        subtotal,
-
-        message: "Cart loaded successfully",
-      },
-      {
-        status: 200,
-      }
+    // Remove invalid / inactive / out-of-stock items
+    cart.items = cart.items.filter((cartItem: any) =>
+      items.some(
+        (item) =>
+          item.productId.toString() ===
+            cartItem.productId.toString() &&
+          (item.size || "") ===
+            (cartItem.size || "") &&
+          (item.color || "") ===
+            (cartItem.color || "")
+      )
     );
 
-  } catch (error: any) {
+    if (cartUpdated) {
+      await cart.save();
+    }
 
+    const totals = calculateCartTotals(items);
+
+    return NextResponse.json({
+      success: true,
+
+      items,
+
+      summary: {
+        totalItems: totals.totalItems,
+        subtotal: totals.subtotal,
+        shipping: totals.shipping,
+        grandTotal: totals.grandTotal,
+      },
+    });
+  } catch (error: any) {
     console.error(
       "GET CART ERROR:",
       error
@@ -282,16 +183,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-
         message:
           error.message ||
-          "Failed to load cart",
+          "Internal Server Error",
       },
       {
         status: 500,
       }
     );
-
   }
-
 }

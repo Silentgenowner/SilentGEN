@@ -54,10 +54,11 @@ export default function OrdersPage() {
 
       const res =
         await fetch(
-          "/api/order/list",
+          "/api/my-orders",
           {
             method:"GET",
             credentials:"include",
+            cache:"no-store",
           }
         );
 
@@ -330,7 +331,7 @@ export default function OrdersPage() {
 
                     <Link
 
-                      href={`/orders/${order._id}`}
+                      href={`/account/orders/${order._id}`}
 
                       className="
                       bg-black

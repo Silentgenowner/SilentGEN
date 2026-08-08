@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import jwt from "jsonwebtoken";
-
 import connectDB from "@/lib/connectDB";
+import { verifyToken } from "@/lib/jwt";
 import User from "@/models/User";
-
-
-const JWT_SECRET =
-process.env.JWT_SECRET!;
 
 
 
@@ -70,14 +65,7 @@ let decoded:any;
 try{
 
 
-decoded =
-jwt.verify(
-
-token,
-
-JWT_SECRET
-
-);
+decoded = verifyToken(token);
 
 
 }
@@ -276,14 +264,7 @@ let decoded:any;
 try{
 
 
-decoded =
-jwt.verify(
-
-token,
-
-JWT_SECRET
-
-);
+decoded = verifyToken(token);
 
 
 }

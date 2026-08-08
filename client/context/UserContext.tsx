@@ -3,14 +3,17 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useState,
   ReactNode,
 } from "react";
 
-
 type User = {
-  name: string;
-  email: string;
+  _id?: string;
+  name?: string;
+  email?: string;
+  mobile?: string;
+  isProfileCompleted?: boolean;
 };
 
 

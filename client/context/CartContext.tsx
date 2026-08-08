@@ -4,743 +4,391 @@ import {
   createContext,
   useContext,
   useEffect,
-  useMemo,
   useState,
   ReactNode,
 } from "react";
 
+type CartItem = {
+  productId: any;
 
+  sku: string;
 
-export type CartProduct = {
+  name: string;
 
-  _id:string;
+  brand: string;
 
-  name?:string;
+  category: string;
 
-  image?:string;
+  image: string;
 
-  price?:number;
+  price: number;
 
+  stock: number;
+
+  status: string;
+
+  quantity: number;
+
+  size: string;
+
+  color: string;
 };
 
+type CartSummary = {
+  totalItems: number;
 
+  subtotal: number;
 
-export type CartItem = {
+  shipping: number;
 
-  _id?:string;
-
-  productId?: string | CartProduct;
-
-  product?: CartProduct;
-
-  name:string;
-
-  image:string;
-
-  price:number;
-
-  quantity:number;
-
-  size:string;
-
-  color:string;
-
+  grandTotal: number;
 };
-
-
-
 
 type CartContextType = {
+  cart: CartItem[];
 
+  loading: boolean;
 
-  cart:CartItem[];
+  summary: CartSummary;
 
-  loading:boolean;
+  refreshCart: () => Promise<void>;
 
-  totalItems:number;
+  addToCart: (
+    productId: string,
+    quantity?: number,
+    size?: string,
+    color?: string
+  ) => Promise<boolean>;
 
-  totalPrice:number;
+  updateQuantity: (
+    productId: string,
+    size: string,
+    color: string,
+    action: "increase" | "decrease"
+  ) => Promise<void>;
 
+  removeFromCart: (
+    productId: string,
+    size: string,
+    color: string
+  ) => Promise<void>;
 
-  loadCart:()=>Promise<void>;
-
-
-  addToCart:
-  (
-    productId:string,
-    quantity?:number,
-    size?:string,
-    color?:string
-  )
-  =>Promise<boolean>;
-
-
-
-  updateQuantity:
-  (
-    productId:string,
-    size:string,
-    color:string,
-    action:"increase"|"decrease"
-  )
-  =>Promise<void>;
-
-
-
-  removeFromCart:
-  (
-    productId:string,
-    size:string,
-    color:string
-  )
-  =>Promise<void>;
-
-
-
-  clearCart:()=>void;
-
-
+  clearCart: () => void;
 };
 
-
-
-
-
 const CartContext =
-createContext<CartContextType | null>(null);
-
-
-
-
-
+  createContext<CartContextType | null>(
+    null
+  );
 
 export function CartProvider({
-
   children,
+}: {
+  children: ReactNode;
+}) {
+  const [cart, setCart] = useState<
+    CartItem[]
+  >([]);
 
-}:{
+  const [loading, setLoading] =
+    useState(true);
 
-  children:ReactNode;
+  const [summary, setSummary] =
+    useState<CartSummary>({
+      totalItems: 0,
+      subtotal: 0,
+      shipping: 0,
+      grandTotal: 0,
+    });
 
-}){
+  useEffect(() => {
+    refreshCart();
+  }, []);
+// ===============================
+// REFRESH CART
+// ===============================
 
+async function refreshCart() {
+  try {
+    setLoading(true);
 
+    const res = await fetch(
+      "/api/cart/list",
+      {
+        cache: "no-store",
+        credentials: "include",
+      }
+    );
 
-const [cart,setCart] =
-useState<CartItem[]>([]);
+    const data = await res.json();
 
+    if (res.status === 401) {
+      setCart([]);
 
+      setSummary({
+        totalItems: 0,
+        subtotal: 0,
+        shipping: 0,
+        grandTotal: 0,
+      });
 
-const [loading,setLoading] =
-useState(true);
+      return;
+    }
 
+    if (!data.success) {
+      throw new Error(
+        data.message ||
+          "Failed to load cart"
+      );
+    }
 
+    setCart(data.items || []);
 
+    setSummary(
+      data.summary || {
+        totalItems: 0,
+        subtotal: 0,
+        shipping: 0,
+        grandTotal: 0,
+      }
+    );
+  } catch (error) {
+    console.error(
+      "REFRESH CART ERROR:",
+      error
+    );
 
+    setCart([]);
 
-
-
-
-async function loadCart(){
-
-
-try{
-
-
-const res =
-await fetch(
-"/api/cart/list",
-{
-cache:"no-store"
+    setSummary({
+      totalItems: 0,
+      subtotal: 0,
+      shipping: 0,
+      grandTotal: 0,
+    });
+  } finally {
+    setLoading(false);
+  }
 }
-);
-
-
-
-const data =
-await res.json();
-
-
-
-
-
-if(data.success){
-
-
-
-const formattedCart =
-(data.items || []).map(
-(item:any)=>{
-  const prodId = item.productId?._id || item.productId || "";
-  const prodIdStr = typeof prodId === "object" ? prodId.toString() : prodId;
-  return {
-    ...item,
-    productId: prodIdStr,
-    name: item.name || item.productId?.name || "",
-    image: item.image || item.productId?.thumbnail || item.productId?.image || "/images/no-image.png",
-    price: item.price || item.productId?.price || 0,
-    quantity: item.quantity || 1,
-    size: item.size || "",
-    color: item.color || ""
-  };
-});
-
-
-
-
-setCart(formattedCart);
-
-
-
-}
-else{
-
-
-setCart([]);
-
-
-}
-
-
-
-}
-catch(error){
-
-
-console.log(error);
-
-setCart([]);
-
-
-}
-finally{
-
-
-setLoading(false);
-
-
-}
-
-
-
-}
-
-
-
-
-
-
-
-
-useEffect(()=>{
-
-
-loadCart();
-
-
-},[]);
-
-
-
-
-
-
-
-
+// ===============================
+// ADD TO CART
+// ===============================
 
 async function addToCart(
+  productId: string,
+  quantity = 1,
+  size = "",
+  color = ""
+): Promise<boolean> {
+  try {
+    const res = await fetch(
+      "/api/cart/add",
+      {
+        method: "POST",
 
-productId:string,
+        credentials: "include",
 
-quantity=1,
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
 
-size="",
+        body: JSON.stringify({
+          productId,
+          quantity,
+          size,
+          color,
+        }),
+      }
+    );
 
-color=""
+    if (res.status === 401) {
+      return false;
+    }
 
-):Promise<boolean>{
+    const data = await res.json();
 
+    if (!data.success) {
+      alert(
+        data.message ||
+          "Unable to add product"
+      );
 
+      return true;
+    }
 
-try{
+    await refreshCart();
 
+    return true;
+  } catch (error) {
+    console.error(
+      "ADD TO CART ERROR:",
+      error
+    );
 
+    alert("Something went wrong.");
 
-const res =
-await fetch(
-
-"/api/cart/add",
-
-{
-
-
-method:"POST",
-
-
-headers:{
-
-
-"Content-Type":
-"application/json"
-
-
-},
-
-
-
-body:JSON.stringify({
-
-productId,
-
-quantity,
-
-size,
-
-color
-
-})
-
-
+    return true;
+  }
 }
-
-);
-
-
-
-
-
-if(res.status===401){
-
-
-return false;
-
-
-}
-
-
-
-
-
-const data =
-await res.json();
-
-
-
-
-
-if(!data.success){
-
-
-alert(data.message);
-
-
-return false;
-
-
-}
-
-
-
-
-await loadCart();
-
-
-
-return true;
-
-
-
-}
-catch(error){
-
-
-console.log(error);
-
-
-return false;
-
-
-}
-
-
-
-}
-
-
-
-
-
-
-
-
+// ===============================
+// UPDATE QUANTITY
+// ===============================
 
 async function updateQuantity(
+  productId: string,
+  size: string,
+  color: string,
+  action: "increase" | "decrease"
+): Promise<void> {
+  try {
+    const res = await fetch(
+      "/api/cart/update",
+      {
+        method: "PATCH",
 
-productId:string,
+        credentials: "include",
 
-size:string,
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
 
-color:string,
+        body: JSON.stringify({
+          productId,
+          size,
+          color,
+          action,
+        }),
+      }
+    );
 
-action:"increase"|"decrease"
+    if (res.status === 401) {
+      return;
+    }
 
-){
+    const data = await res.json();
 
+    if (!data.success) {
+      alert(
+        data.message ||
+          "Unable to update cart"
+      );
 
+      return;
+    }
 
-try{
+    await refreshCart();
+  } catch (error) {
+    console.error(
+      "UPDATE CART ERROR:",
+      error
+    );
 
-
-
-const res =
-await fetch(
-
-"/api/cart/update",
-
-{
-
-
-method:"PATCH",
-
-
-headers:{
-
-
-"Content-Type":
-"application/json"
-
-
-},
-
-
-
-body:JSON.stringify({
-
-
-productId,
-
-size,
-
-color,
-
-action
-
-
-})
-
-
+    alert("Something went wrong.");
+  }
 }
-
-);
-
-
-
-
-
-const data =
-await res.json();
-
-
-
-
-
-if(data.success){
-
-
-await loadCart();
-
-
-}
-else{
-
-
-alert(data.message);
-
-
-}
-
-
-
-}
-catch(error){
-
-
-console.log(error);
-
-
-}
-
-
-
-}
-
-
-
-
-
-
-
-
+// ===============================
+// REMOVE FROM CART
+// ===============================
 
 async function removeFromCart(
+  productId: string,
+  size: string,
+  color: string
+): Promise<void> {
+  try {
+    const res = await fetch(
+      "/api/cart/remove",
+      {
+        method: "DELETE",
 
-productId:string,
+        credentials: "include",
 
-size:string,
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
 
-color:string
+        body: JSON.stringify({
+          productId,
+          size,
+          color,
+        }),
+      }
+    );
 
-){
+    if (res.status === 401) {
+      return;
+    }
 
+    const data = await res.json();
 
+    if (!data.success) {
+      alert(
+        data.message ||
+          "Unable to remove item"
+      );
 
-try{
+      return;
+    }
 
+    await refreshCart();
+  } catch (error) {
+    console.error(
+      "REMOVE CART ERROR:",
+      error
+    );
 
-
-const res =
-await fetch(
-
-"/api/cart/remove",
-
-{
-
-
-method:"DELETE",
-
-
-headers:{
-
-
-"Content-Type":
-"application/json"
-
-
-},
-
-
-
-body:JSON.stringify({
-
-
-productId,
-
-size,
-
-color
-
-
-})
-
-
+    alert("Something went wrong.");
+  }
 }
 
-);
+// ===============================
+// CLEAR CART
+// ===============================
 
+function clearCart() {
+  setCart([]);
 
-
-
-
-const data =
-await res.json();
-
-
-
-
-
-if(data.success){
-
-
-await loadCart();
-
-
+  setSummary({
+    totalItems: 0,
+    subtotal: 0,
+    shipping: 0,
+    grandTotal: 0,
+  });
 }
-else{
+  return (
+    <CartContext.Provider
+      value={{
+        cart,
+        loading,
+        summary,
 
+        refreshCart,
 
-alert(data.message);
+        addToCart,
 
+        updateQuantity,
 
-}
+        removeFromCart,
 
-
-
-}
-catch(error){
-
-
-console.log(error);
-
-
+        clearCart,
+      }}
+    >
+      {children}
+    </CartContext.Provider>
+  );
 }
 
-
-
-}
-
-
-
-
-
-
-
-
-
-function clearCart(){
-
-
-setCart([]);
-
-
-}
-
-
-
-
-
-
-
-
-
-const totalItems =
-useMemo(()=>{
-
-
-return cart.reduce(
-
-(total,item)=>
-
-total + item.quantity,
-
-0
-
-);
-
-
-
-},[cart]);
-
-
-
-
-
-
-
-
-
-const totalPrice =
-useMemo(()=>{
-
-
-return cart.reduce(
-
-(total,item)=>
-
-total +
-
-(item.price || 0) *
-
-item.quantity,
-
-0
-
-);
-
-
-
-},[cart]);
-
-
-
-
-
-
-
-
-
-return(
-
-
-<CartContext.Provider
-
-
-value={{
-
-
-cart,
-
-loading,
-
-totalItems,
-
-totalPrice,
-
-loadCart,
-
-addToCart,
-
-updateQuantity,
-
-removeFromCart,
-
-clearCart
-
-
-}}
-
-
->
-
-
-{children}
-
-
-</CartContext.Provider>
-
-
-);
-
-
-
-}
-
-
-
-
-
-
-
-
-
-export function useCart(){
-
-
-
-const context =
-useContext(CartContext);
-
-
-
-
-
-if(!context){
-
-
-throw new Error(
-
-"useCart must be used inside CartProvider"
-
-);
-
-
-}
-
-
-
-
-
-return context;
-
-
-
+export function useCart() {
+  const context = useContext(CartContext);
+
+  if (!context) {
+    throw new Error(
+      "useCart must be used inside CartProvider"
+    );
+  }
+
+  return context;
 }

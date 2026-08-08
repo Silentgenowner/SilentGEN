@@ -1,137 +1,129 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
-
-type Order = {
-  _id:string;
-
-  items:{
-    name:string;
-    image:string;
-    price:number;
-    quantity:number;
-    size?:string;
-    color?:string;
-  }[];
-
-  shippingAddress:{
-    fullName:string;
-    mobile:string;
-    address:string;
-    area:string;
-    city:string;
-    state:string;
-    pincode:string;
-  };
-
-  paymentMethod:string;
-
-  paymentStatus:string;
-
-  orderStatus:string;
-
-  totalAmount:number;
-
-  trackingNumber?:string;
-
-  courierPartner?:string;
-
-  cancelReason?:string;
-
-  returnReason?:string;
-
-  exchangeReason?:string;
+type OrderItem = {
+  name: string;
+  image: string;
+  quantity: number;
+  price: number;
+  size?: string;
+  color?: string;
 };
 
+type DeliveryHistory = {
+  status: string;
+  date: string;
+  note?: string;
+};
 
+type ShippingAddress = {
+  fullName: string;
+  mobile: string;
+  address: string;
+  area: string;
+  city: string;
+  state: string;
+  country: string;
+  pincode: string;
+  landmark?: string;
+};
 
+type Order = {
+  _id: string;
 
+  items: OrderItem[];
 
-export default function OrderDetailsPage(){
+  shippingAddress: ShippingAddress;
 
+  paymentMethod: string;
+  paymentStatus: string;
+  orderStatus: string;
+
+  subtotal: number;
+  shippingCharge: number;
+  discount: number;
+  totalAmount: number;
+
+  trackingNumber?: string;
+  courierPartner?: string;
+
+  deliveryHistory: DeliveryHistory[];
+
+  createdAt: string;
+};
+
+export default function OrderDetailsPage() {
 
   const params = useParams();
+  const router = useRouter();
 
+  const id = params.id as string;
 
-  const id =
-    params.id as string;
+  const [order, setOrder] =
+    useState<Order | null>(null);
 
-
-
-  const [order,setOrder] =
-    useState<Order|null>(null);
-
-
-
-  const [loading,setLoading] =
+  const [loading, setLoading] =
     useState(true);
 
-
-
-  const [actionLoading,setActionLoading] =
-    useState(false);
-
-
-
-  const [reason,setReason] =
+  const [error, setError] =
     useState("");
 
+  const [cancelLoading, setCancelLoading] =
+    useState(false);
 
+  async function loadOrder() {
 
+    try {
 
-
-
-
-  useEffect(()=>{
-
-    if(id){
-
-      fetchOrder();
-
-    }
-
-  },[id]);
-
-
-
-
-
-
-  async function fetchOrder(){
-
-
-    try{
+      setLoading(true);
 
       const res =
-      await fetch(
-        `/api/order/details/${id}`,
-        {
-          credentials:"include",
-        }
-      );
+        await fetch(
+
+          `/api/order/${id}`,
+
+          {
+
+            cache: "no-store",
+
+            credentials: "include",
+
+          }
+
+        );
 
       const data =
-      await res.json();
+        await res.json();
 
-
-
-      if(data.success){
+      if (data.success) {
 
         setOrder(data.order);
 
+      } else {
+
+        setError(
+
+          data.message ||
+
+          "Order not found"
+
+        );
+
       }
 
+    } catch (err) {
 
-    }
-    catch(error){
+      console.log(err);
 
-      console.log(error);
+      setError(
 
-    }
-    finally{
+        "Something went wrong"
+
+      );
+
+    } finally {
 
       setLoading(false);
 
@@ -139,197 +131,105 @@ export default function OrderDetailsPage(){
 
   }
 
+  async function cancelOrder() {
 
+    if (!order) return;
 
-
-
-
-
-  async function orderAction(
-    type:"cancel"|"return"|"exchange"
-  ){
-
-
-
-    if(
-      type !== "cancel" &&
-      !reason
-    ){
-
-      alert(
-        "Please enter reason"
+    const confirmCancel =
+      window.confirm(
+        "Are you sure you want to cancel this order?"
       );
+
+    if (!confirmCancel) {
 
       return;
 
     }
 
+    try {
 
-
-
-
-    const confirmAction =
-      confirm(
-        `Are you sure you want to ${type} this order?`
-      );
-
-
-
-    if(!confirmAction){
-
-      return;
-
-    }
-
-
-
-
-
-    try{
-
-
-      setActionLoading(true);
-
-
-
-      const api =
-      type==="cancel"
-      ?
-      "cancel"
-      :
-      type==="return"
-      ?
-      "return"
-      :
-      "exchange";
-
-
-
-
+      setCancelLoading(true);
 
       const res =
-      await fetch(
-        `/api/order/${api}/${id}`,
-        {
+        await fetch(
 
-          method:"POST",
+          "/api/order/cancel",
 
-          headers:{
-            "Content-Type":"application/json",
-          },
+          {
 
+            method: "POST",
 
-          credentials:"include",
+            credentials: "include",
 
+            headers: {
 
-          body:JSON.stringify({
+              "Content-Type":
+                "application/json",
 
-            reason:
-            reason ||
-            `Customer ${type}`,
+            },
 
-          }),
+            body: JSON.stringify({
 
-        }
-      );
+              orderId: order._id,
 
+            }),
 
+          }
 
+        );
 
       const data =
-      await res.json();
+        await res.json();
 
+      alert(data.message);
 
+      if (data.success) {
 
-      if(data.success){
-
-
-        alert(
-          `${type} request successful`
-        );
-
-
-        setReason("");
-
-        fetchOrder();
-
-
-      }
-      else{
-
-
-        alert(
-          data.message
-        );
-
+        await loadOrder();
 
       }
 
-
-
-
-    }
-    catch(error){
-
+    } catch (error) {
 
       console.log(error);
 
+      alert("Something went wrong");
 
-      alert(
-        "Something went wrong"
-      );
+    } finally {
 
-
-    }
-    finally{
-
-
-      setActionLoading(false);
-
+      setCancelLoading(false);
 
     }
 
-
   }
+  useEffect(() => {
+
+    if (id) {
+
+      loadOrder();
+
+    }
+
+  }, [id]);
 
 
 
+  if (loading) {
 
+    return (
 
+      <div
+        className="
+        min-h-screen
+        flex
+        items-center
+        justify-center
+        text-xl
+        font-semibold
+        "
+      >
 
-
-
-
-  if(loading){
-
-
-    return(
-
-      <div className="p-10 text-center">
-
-        Loading...
-
-      </div>
-
-    );
-
-
-  }
-
-
-
-
-
-
-
-  if(!order){
-
-
-    return(
-
-      <div className="p-10 text-center">
-
-        Order not found
+        Loading Order...
 
       </div>
 
@@ -339,421 +239,1047 @@ export default function OrderDetailsPage(){
 
 
 
+  if (error || !order) {
 
+    return (
 
+      <div
+        className="
+        min-h-screen
+        flex
+        flex-col
+        items-center
+        justify-center
+        gap-5
+        "
+      >
 
+        <h2 className="text-2xl font-bold">
 
-  return(
+          {error}
 
-<div className="max-w-6xl mx-auto px-4 py-10">
+        </h2>
 
+        <button
 
+          onClick={() =>
+            router.push("/account/orders")
+          }
 
-<Link
-href="/orders"
-className="underline"
->
+          className="
+          bg-black
+          text-white
+          px-6
+          py-3
+          rounded-lg
+          "
 
-Back To Orders
+        >
 
-</Link>
+          Back To Orders
 
+        </button>
 
+      </div>
 
+    );
 
+  }
 
-<h1 className="text-3xl font-bold my-6">
 
-Order Details
 
-</h1>
+  return (
 
+    <main
+      className="
+      max-w-6xl
+      mx-auto
+      px-6
+      py-10
+      "
+    >
 
+      <div
+        className="
+        flex
+        justify-between
+        items-center
+        mb-8
+        "
+      >
 
+        <div>
 
+          <h1
+            className="
+            text-4xl
+            font-bold
+            "
+          >
 
+            Order Details
 
+          </h1>
 
-<div className="grid md:grid-cols-3 gap-6">
+          <p
+            className="
+            text-gray-500
+            mt-2
+            "
+          >
 
+            Order ID :
+            {" "}
+            {order._id}
 
+          </p>
 
+        </div>
 
+        <button
 
+          onClick={() =>
+            router.push("/account/orders")
+          }
 
-<div className="md:col-span-2 border rounded-xl p-5">
+          className="
+          border
+          px-5
+          py-2
+          rounded-lg
+          "
 
+        >
 
-<h2 className="text-xl font-bold mb-5">
+          Back
 
-Products
+        </button>
 
-</h2>
+      </div>
 
 
 
 
-{
-order.items.map(
-(item,index)=>(
 
+      {/* ==========================
+          PRODUCTS
+      =========================== */}
 
-<div
-key={index}
-className="flex gap-4 border-b py-4"
->
+      <section
+        className="
+        bg-white
+        shadow
+        rounded-xl
+        p-6
+        mb-8
+        "
+      >
 
+        <h2
+          className="
+          text-2xl
+          font-bold
+          mb-6
+          "
+        >
 
-<img
+          Ordered Products
 
-src={
-item.image ||
-"/images/no-image.png"
-}
+        </h2>
 
-alt={item.name}
+        <div className="space-y-6">
 
-className="
-w-20
-h-20
-object-cover
-rounded
-"
+          {
 
-/>
+            order.items.map(
 
+              (item, index) => (
 
+                <div
 
-<div>
+                  key={index}
 
-<h3 className="font-semibold">
+                  className="
+                  flex
+                  gap-5
+                  border-b
+                  pb-5
+                  "
 
-{item.name}
+                >
 
-</h3>
+                  <img
 
+                    src={
+                      item.image ||
+                      "/images/no-image.png"
+                    }
 
-<p>
+                    alt={item.name}
 
-Qty:
-{" "}
-{item.quantity}
+                    className="
+                    w-24
+                    h-24
+                    rounded-lg
+                    border
+                    object-cover
+                    "
 
-</p>
+                  />
 
+                  <div className="flex-1">
 
+                    <h3
+                      className="
+                      text-lg
+                      font-semibold
+                      "
+                    >
 
-<p>
+                      {item.name}
 
-₹{item.price}
+                    </h3>
 
-</p>
+                    <p className="mt-2">
 
+                      Quantity :
+                      {" "}
+                      {item.quantity}
 
+                    </p>
 
-</div>
+                    {
 
+                      item.size && (
 
+                        <p>
 
-</div>
+                          Size :
+                          {" "}
+                          {item.size}
 
+                        </p>
 
-)
+                      )
 
-)
+                    }
 
-}
+                    {
 
+                      item.color && (
 
+                        <p>
 
+                          Color :
+                          {" "}
+                          {item.color}
 
-</div>
+                        </p>
 
+                      )
 
+                    }
 
+                  </div>
 
+                  <div className="text-right">
 
+                    <p
+                      className="
+                      text-xl
+                      font-bold
+                      "
+                    >
 
+                      ₹{item.price}
 
+                    </p>
 
-<div className="border rounded-xl p-5">
+                    <p
+                      className="
+                      text-gray-500
+                      "
+                    >
 
+                      Total
 
-<h2 className="text-xl font-bold mb-5">
+                    </p>
 
-Summary
+                    <p
+                      className="
+                      font-semibold
+                      "
+                    >
 
-</h2>
+                      ₹
+                      {item.price * item.quantity}
 
+                    </p>
 
+                  </div>
 
+                </div>
 
-<p>
+              )
 
-Status:
+            )
 
-<b>
+          }
 
-{" "}
-{order.orderStatus}
+        </div>
 
-</b>
+      </section>
+      {/* ==========================
+          SHIPPING ADDRESS
+      =========================== */}
 
-</p>
+      <section
+        className="
+        bg-white
+        shadow
+        rounded-xl
+        p-6
+        mb-8
+        "
+      >
 
+        <h2
+          className="
+          text-2xl
+          font-bold
+          mb-6
+          "
+        >
 
+          Shipping Address
 
+        </h2>
 
-<p className="mt-3">
+        <div className="space-y-2">
 
-Payment:
+          <h3 className="text-lg font-semibold">
 
-{" "}
-{order.paymentStatus}
+            {order.shippingAddress.fullName}
 
-</p>
+          </h3>
 
+          <p>
 
+            Mobile :
+            {" "}
+            {order.shippingAddress.mobile}
 
+          </p>
 
-<p className="text-xl font-bold mt-5">
+          <p>
 
-₹{order.totalAmount}
+            {order.shippingAddress.address}
 
-</p>
+          </p>
 
+          {
 
-<button
+            order.shippingAddress.area && (
 
-onClick={() => {
+              <p>
 
-  window.open(
-    `/api/order/invoice/${order._id}`,
-    "_blank"
+                {order.shippingAddress.area}
+
+              </p>
+
+            )
+
+          }
+
+          <p>
+
+            {order.shippingAddress.city},
+            {" "}
+            {order.shippingAddress.state}
+
+          </p>
+
+          <p>
+
+            {order.shippingAddress.country}
+            {" - "}
+            {order.shippingAddress.pincode}
+
+          </p>
+
+          {
+
+            order.shippingAddress.landmark && (
+
+              <p>
+
+                Landmark :
+                {" "}
+                {order.shippingAddress.landmark}
+
+              </p>
+
+            )
+
+          }
+
+        </div>
+
+      </section>
+
+
+
+
+
+
+
+      {/* ==========================
+          PAYMENT DETAILS
+      =========================== */}
+
+      <section
+        className="
+        bg-white
+        shadow
+        rounded-xl
+        p-6
+        mb-8
+        "
+      >
+
+        <h2
+          className="
+          text-2xl
+          font-bold
+          mb-6
+          "
+        >
+
+          Payment Details
+
+        </h2>
+
+        <div className="space-y-4">
+
+          <div className="flex justify-between">
+
+            <span>
+
+              Payment Method
+
+            </span>
+
+            <strong>
+
+              {order.paymentMethod}
+
+            </strong>
+
+          </div>
+
+          <div className="flex justify-between">
+
+            <span>
+
+              Payment Status
+
+            </span>
+
+            <strong>
+
+              {order.paymentStatus}
+
+            </strong>
+
+          </div>
+
+          <div className="flex justify-between">
+
+            <span>
+
+              Order Status
+
+            </span>
+
+            <strong>
+
+              {order.orderStatus}
+
+            </strong>
+
+          </div>
+
+        </div>
+
+      </section>
+
+
+
+
+
+
+
+      {/* ==========================
+          ORDER SUMMARY
+      =========================== */}
+
+      <section
+        className="
+        bg-white
+        shadow
+        rounded-xl
+        p-6
+        mb-8
+        "
+      >
+
+        <h2
+          className="
+          text-2xl
+          font-bold
+          mb-6
+          "
+        >
+
+          Order Summary
+
+        </h2>
+
+        <div className="space-y-4">
+
+          <div className="flex justify-between">
+
+            <span>
+
+              Subtotal
+
+            </span>
+
+            <strong>
+
+              ₹{order.subtotal}
+
+            </strong>
+
+          </div>
+
+          <div className="flex justify-between">
+
+            <span>
+
+              Shipping Charge
+
+            </span>
+
+            <strong>
+
+              ₹{order.shippingCharge}
+
+            </strong>
+
+          </div>
+
+          <div className="flex justify-between">
+
+            <span>
+
+              Discount
+
+            </span>
+
+            <strong>
+
+              ₹{order.discount}
+
+            </strong>
+
+          </div>
+
+          <hr />
+
+          <div
+            className="
+            flex
+            justify-between
+            text-2xl
+            font-bold
+            "
+          >
+
+            <span>
+
+              Grand Total
+
+            </span>
+
+            <span>
+
+              ₹{order.totalAmount}
+
+            </span>
+
+          </div>
+
+        </div>
+
+      </section>
+      {/* ==========================
+          DELIVERY DETAILS
+      =========================== */}
+
+      <section
+        className="
+        bg-white
+        shadow
+        rounded-xl
+        p-6
+        mb-8
+        "
+      >
+
+        <h2
+          className="
+          text-2xl
+          font-bold
+          mb-6
+          "
+        >
+
+          Delivery Details
+
+        </h2>
+
+        <div className="space-y-4">
+
+          <div className="flex justify-between">
+
+            <span>
+
+              Order Date
+
+            </span>
+
+            <strong>
+
+              {
+                new Date(
+                  order.createdAt
+                ).toLocaleDateString()
+              }
+
+            </strong>
+
+          </div>
+
+          <div className="flex justify-between">
+
+            <span>
+
+              Current Status
+
+            </span>
+
+            <strong>
+
+              {order.orderStatus}
+
+            </strong>
+
+          </div>
+
+          <div className="flex justify-between">
+
+            <span>
+
+              Courier Partner
+
+            </span>
+
+            <strong>
+
+              {
+                order.courierPartner ||
+                "Not Assigned"
+              }
+
+            </strong>
+
+          </div>
+
+          <div className="flex justify-between">
+
+            <span>
+
+              Tracking Number
+
+            </span>
+
+            <strong>
+
+              {
+                order.trackingNumber ||
+                "Not Available"
+              }
+
+            </strong>
+
+          </div>
+
+        </div>
+
+      </section>
+
+
+
+
+
+
+      {/* ==========================
+          DELIVERY TIMELINE
+      =========================== */}
+
+      <section
+        className="
+        bg-white
+        shadow
+        rounded-xl
+        p-6
+        mb-8
+        "
+      >
+
+        <h2
+          className="
+          text-2xl
+          font-bold
+          mb-8
+          "
+        >
+
+          Delivery Timeline
+
+        </h2>
+
+        {
+
+          order.deliveryHistory.length === 0 ?
+
+          (
+
+            <p className="text-gray-500">
+
+              No delivery updates available.
+
+            </p>
+
+          )
+
+          :
+
+          (
+
+            <div className="space-y-6">
+
+              {
+
+                order.deliveryHistory.map(
+
+                  (item,index)=>(
+
+                    <div
+
+                      key={index}
+
+                      className="
+                      flex
+                      gap-5
+                      "
+
+                    >
+
+                      <div
+                        className="
+                        w-4
+                        flex
+                        justify-center
+                        "
+                      >
+
+                        <div
+                          className="
+                          w-3
+                          h-3
+                          rounded-full
+                          bg-black
+                          mt-2
+                          "
+                        />
+
+                      </div>
+
+                      <div className="flex-1">
+
+                        <h3
+                          className="
+                          font-bold
+                          text-lg
+                          "
+                        >
+
+                          {item.status}
+
+                        </h3>
+
+                        <p
+                          className="
+                          text-sm
+                          text-gray-500
+                          "
+                        >
+
+                          {
+
+                            new Date(
+                              item.date
+                            ).toLocaleString()
+
+                          }
+
+                        </p>
+
+                        {
+
+                          item.note &&
+
+                          <p className="mt-2">
+
+                            {item.note}
+
+                          </p>
+
+                        }
+
+                      </div>
+
+                    </div>
+
+                  )
+
+                )
+
+              }
+
+            </div>
+
+          )
+
+        }
+
+      </section>
+      {/* ==========================
+          ORDER ACTIONS
+      =========================== */}
+
+      <section
+        className="
+        bg-white
+        shadow
+        rounded-xl
+        p-6
+        mb-8
+        "
+      >
+
+        <h2
+          className="
+          text-2xl
+          font-bold
+          mb-6
+          "
+        >
+
+          Order Actions
+
+        </h2>
+
+        <div
+          className="
+          flex
+          flex-wrap
+          gap-4
+          "
+        >
+
+          {(order.orderStatus === "Placed" ||
+            order.orderStatus === "Confirmed") && (
+
+            <button
+
+              onClick={cancelOrder}
+
+              disabled={cancelLoading}
+
+              className="
+              bg-red-600
+              hover:bg-red-700
+              text-white
+              px-6
+              py-3
+              rounded-lg
+              disabled:opacity-50
+              "
+
+            >
+
+              {
+
+                cancelLoading
+
+                  ? "Cancelling..."
+
+                  : "Cancel Order"
+
+              }
+
+            </button>
+
+          )}
+
+
+
+
+
+
+          {order.orderStatus === "Delivered" && (
+
+            <button
+
+              onClick={() => {
+
+                router.push(
+                  `/account/orders/${order._id}/return`
+                );
+
+              }}
+
+              className="
+              bg-yellow-500
+              hover:bg-yellow-600
+              text-white
+              px-6
+              py-3
+              rounded-lg
+              "
+
+            >
+
+              Return Request
+
+            </button>
+
+          )}
+
+
+
+
+
+
+
+          {order.orderStatus === "Delivered" && (
+
+            <button
+
+              onClick={() => {
+
+                router.push(
+                  `/account/orders/${order._id}/exchange`
+                );
+
+              }}
+
+              className="
+              bg-blue-600
+              hover:bg-blue-700
+              text-white
+              px-6
+              py-3
+              rounded-lg
+              "
+
+            >
+
+              Exchange Request
+
+            </button>
+
+          )}
+
+
+
+
+
+
+
+          <button
+
+            onClick={() => {
+
+              window.print();
+
+            }}
+
+            className="
+            bg-green-600
+            hover:bg-green-700
+            text-white
+            px-6
+            py-3
+            rounded-lg
+            "
+
+          >
+
+            Download Invoice
+
+          </button>
+
+
+
+
+
+
+
+
+          <button
+
+            onClick={() => {
+
+              router.push(
+                "/account/orders"
+              );
+
+            }}
+
+            className="
+            border
+            border-black
+            px-6
+            py-3
+            rounded-lg
+            "
+
+          >
+
+            Back To Orders
+
+          </button>
+
+        </div>
+
+      </section>
+   
+     </main>
+
   );
-
-}}
-
-className="
-mt-4
-w-full
-bg-green-600
-text-white
-py-2
-rounded
-"
-
->
-
-Download Invoice
-
-</button>
-
-
-
-
-
-{
-(
-order.orderStatus==="Placed" ||
-order.orderStatus==="Confirmed"
-)
-
-&&
-
-<button
-
-onClick={()=>orderAction("cancel")}
-
-disabled={actionLoading}
-
-className="
-mt-5
-w-full
-bg-red-600
-text-white
-py-2
-rounded
-"
-
->
-
-Cancel Order
-
-</button>
-
-}
-
-
-
-
-
-
-
-
-{
-order.orderStatus==="Delivered"
-
-&&
-
-<div className="mt-5">
-
-
-<textarea
-
-value={reason}
-
-onChange={(e)=>
-setReason(e.target.value)
-}
-
-placeholder="Reason"
-
-className="
-border
-w-full
-p-2
-rounded
-"
-
-/>
-
-
-
-
-<button
-
-onClick={()=>orderAction("return")}
-
-disabled={actionLoading}
-
-className="
-mt-3
-w-full
-bg-black
-text-white
-py-2
-rounded
-"
-
->
-
-Return Request
-
-</button>
-
-
-
-
-
-<button
-
-onClick={()=>orderAction("exchange")}
-
-disabled={actionLoading}
-
-className="
-mt-3
-w-full
-bg-blue-600
-text-white
-py-2
-rounded
-"
-
->
-
-Exchange Request
-
-</button>
-
-
-
-</div>
-
-}
-
-
-
-
-
-</div>
-
-
-
-
-
-
-</div>
-
-
-
-
-
-
-
-<div className="border rounded-xl p-5 mt-6">
-
-
-<h2 className="text-xl font-bold mb-3">
-
-Delivery Address
-
-</h2>
-
-
-
-<p>
-
-{order.shippingAddress.fullName}
-
-</p>
-
-
-
-<p>
-
-{order.shippingAddress.mobile}
-
-</p>
-
-
-
-<p>
-
-{order.shippingAddress.address},
-
-{order.shippingAddress.area}
-
-</p>
-
-
-
-<p>
-
-{order.shippingAddress.city},
-
-{order.shippingAddress.state}
-
--
-
-{order.shippingAddress.pincode}
-
-</p>
-
-
-
-</div>
-
-
-
-
-
-
-</div>
-
-
-);
-
 
 }
