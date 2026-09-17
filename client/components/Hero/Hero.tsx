@@ -82,6 +82,7 @@ export default function Hero() {
           priority={currentSlide === 0}
           sizes="100vw"
           className="object-cover transition-opacity duration-700"
+          loading="eager"
         />
 
         {/* Dark Overlay */}

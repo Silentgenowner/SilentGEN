@@ -1,191 +1,917 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
+
+import mongoose from "mongoose";
 
 import connectDB from "@/lib/connectDB";
-import { verifyToken } from "@/lib/jwt";
+
+import {
+  verifyToken,
+} from "@/lib/jwt";
+
+import {
+  recordWishlistLearningSafely,
+} from "@/lib/ai/learning/customerLearningEngine";
+
 import User from "@/models/User";
 import Product from "@/models/Product";
 
+/*
+|--------------------------------------------------------------------------
+| GET USER ID
+|--------------------------------------------------------------------------
+*/
 
-// ==============================
-// AUTH HELPER
-// ==============================
+function getUserId(
+  request:
+    NextRequest
+): string | null {
+  try {
+    const token =
+      request.cookies.get(
+        "token"
+      )?.value;
 
-function getUserId(req: NextRequest): string | null {
-  const token = req.cookies.get("token")?.value;
+    if (
+      !token
+    ) {
+      return null;
+    }
 
-  if (!token) return null;
+    const decoded =
+      verifyToken(
+        token
+      );
 
-  const decoded = verifyToken(token);
+    if (
+      !decoded ||
+      typeof decoded !==
+        "object"
+    ) {
+      return null;
+    }
 
-  if (!decoded || typeof decoded !== "object") return null;
+    const payload =
+      decoded as {
+        id?:
+          string;
 
-  const id =
-    (decoded as any).id ||
-    (decoded as any).userId;
+        userId?:
+          string;
+      };
 
-  return id ? String(id) : null;
+    const id =
+      payload.id ||
+      payload.userId;
+
+    if (
+      !id
+    ) {
+      return null;
+    }
+
+    const normalizedId =
+      String(
+        id
+      ).trim();
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        normalizedId
+      )
+    ) {
+      return null;
+    }
+
+    return normalizedId;
+  } catch {
+    return null;
+  }
 }
 
+/*
+|--------------------------------------------------------------------------
+| GET WISHLIST
+|--------------------------------------------------------------------------
+*/
 
-// ==============================
-// GET — Fetch wishlist
-// ==============================
-
-export async function GET(req: NextRequest) {
+export async function GET(
+  request:
+    NextRequest
+) {
   try {
     await connectDB();
 
-    const userId = getUserId(req);
+    const userId =
+      getUserId(
+        request
+      );
 
-    if (!userId) {
+    if (
+      !userId
+    ) {
       return NextResponse.json(
-        { success: false, message: "Please login first" },
-        { status: 401 }
+        {
+          success:
+            false,
+
+          message:
+            "Please login first",
+        },
+        {
+          status:
+            401,
+        }
       );
     }
 
-    const user = await User.findById(userId).populate(
-      "wishlist",
-      "name slug thumbnail price mrp stock status isDeleted"
-    );
+    const user =
+      await User.findById(
+        userId
+      )
+        .populate({
+          path:
+            "wishlist",
 
-    if (!user) {
+          model:
+            Product,
+
+          select:
+            "_id name slug thumbnail images price mrp stock status isDeleted",
+        })
+        .lean();
+
+    if (
+      !user
+    ) {
       return NextResponse.json(
-        { success: false, message: "User not found" },
-        { status: 404 }
+        {
+          success:
+            false,
+
+          message:
+            "User not found",
+        },
+        {
+          status:
+            404,
+        }
       );
     }
 
-    // Filter out deleted products from the wishlist
-    const activeWishlist = (user.wishlist as any[]).filter(
-      (item: any) => item && !item.isDeleted
-    );
+    const rawWishlist =
+      Array.isArray(
+        (user as any)
+          .wishlist
+      )
+        ? (user as any)
+            .wishlist
+        : [];
 
-    return NextResponse.json({
-      success: true,
-      wishlist: activeWishlist,
-    });
-  } catch (error: any) {
-    console.error("WISHLIST GET ERROR:", error);
+    /*
+    |--------------------------------------------------------------------------
+    | ONLY ACTIVE PRODUCTS
+    |--------------------------------------------------------------------------
+    */
+
+    const activeWishlist =
+      rawWishlist.filter(
+        (
+          item:
+            any
+        ) => {
+          if (
+            !item
+          ) {
+            return false;
+          }
+
+          if (
+            item.isDeleted ===
+            true
+          ) {
+            return false;
+          }
+
+          if (
+            item.status ===
+            "Archived"
+          ) {
+            return false;
+          }
+
+          return true;
+        }
+      );
 
     return NextResponse.json(
       {
-        success: false,
-        message: error.message || "Something went wrong",
+        success:
+          true,
+
+        wishlist:
+          activeWishlist,
+
+        count:
+          activeWishlist.length,
       },
-      { status: 500 }
+      {
+        status:
+          200,
+      }
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      "WISHLIST GET ERROR:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success:
+          false,
+
+        message:
+          error instanceof
+          Error
+            ? error.message
+            : "Something went wrong",
+      },
+      {
+        status:
+          500,
+      }
     );
   }
 }
 
+/*
+|--------------------------------------------------------------------------
+| ADD TO WISHLIST
+|--------------------------------------------------------------------------
+*/
 
-// ==============================
-// POST — Add to wishlist
-// ==============================
-
-export async function POST(req: NextRequest) {
+export async function POST(
+  request:
+    NextRequest
+) {
   try {
     await connectDB();
 
-    const userId = getUserId(req);
+    /*
+    |--------------------------------------------------------------------------
+    | AUTH
+    |--------------------------------------------------------------------------
+    */
 
-    if (!userId) {
+    const userId =
+      getUserId(
+        request
+      );
+
+    if (
+      !userId
+    ) {
       return NextResponse.json(
-        { success: false, message: "Please login first" },
-        { status: 401 }
+        {
+          success:
+            false,
+
+          message:
+            "Please login first",
+        },
+        {
+          status:
+            401,
+        }
       );
     }
 
-    const body = await req.json();
-    const { productId } = body;
+    /*
+    |--------------------------------------------------------------------------
+    | BODY
+    |--------------------------------------------------------------------------
+    */
 
-    if (!productId) {
+    let body:
+      {
+        productId?:
+          string;
+      };
+
+    try {
+      body =
+        await request.json();
+    } catch {
       return NextResponse.json(
-        { success: false, message: "Product ID is required" },
-        { status: 400 }
+        {
+          success:
+            false,
+
+          message:
+            "Invalid request body",
+        },
+        {
+          status:
+            400,
+        }
       );
     }
 
-    // Verify product exists and is not deleted
-    const product = await Product.findOne({
-      _id: productId,
-      isDeleted: { $ne: true },
-    });
+    const productId =
+      typeof body?.productId ===
+      "string"
+        ? body.productId.trim()
+        : "";
 
-    if (!product) {
+    /*
+    |--------------------------------------------------------------------------
+    | VALIDATE PRODUCT ID
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      !productId
+    ) {
       return NextResponse.json(
-        { success: false, message: "Product not found" },
-        { status: 404 }
+        {
+          success:
+            false,
+
+          message:
+            "Product ID is required",
+        },
+        {
+          status:
+            400,
+        }
       );
     }
 
-    // $addToSet prevents duplicates atomically
-    await User.findByIdAndUpdate(userId, {
-      $addToSet: { wishlist: productId },
-    });
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        productId
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
 
-    return NextResponse.json({
-      success: true,
-      message: "Added to wishlist",
-    });
-  } catch (error: any) {
-    console.error("WISHLIST ADD ERROR:", error);
+          message:
+            "Invalid Product ID",
+        },
+        {
+          status:
+            400,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PRODUCT EXISTS
+    |--------------------------------------------------------------------------
+    |
+    | Wishlist analytics must only use a real current Product DB document.
+    |
+    |--------------------------------------------------------------------------
+    */
+
+    const product =
+      await Product.findOne(
+        {
+          _id:
+            productId,
+
+          isDeleted: {
+            $ne:
+              true,
+          },
+        }
+      )
+        .select(
+          "_id status name category subCategory brand gender fabric fit price stock"
+        )
+        .lean();
+
+    if (
+      !product
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Product not found",
+        },
+        {
+          status:
+            404,
+        }
+      );
+    }
+
+    if (
+      product.status ===
+      "Archived"
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "This product is not available",
+        },
+        {
+          status:
+            400,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ATOMIC ADD WITHOUT DUPLICATE
+    |--------------------------------------------------------------------------
+    |
+    | Important:
+    |
+    | Filter includes:
+    |
+    | wishlist: { $ne: productId }
+    |
+    | Therefore only a genuinely new wishlist addition can modify the user.
+    |
+    | This also prevents duplicate behaviour events on:
+    |
+    | - double click
+    | - retry
+    | - repeated POST
+    |
+    |--------------------------------------------------------------------------
+    */
+
+    const updateResult =
+      await User.updateOne(
+        {
+          _id:
+            userId,
+
+          wishlist: {
+            $ne:
+              productId,
+          },
+        },
+        {
+          $addToSet: {
+            wishlist:
+              productId,
+          },
+        }
+      );
+
+    /*
+    |--------------------------------------------------------------------------
+    | USER NOT MATCHED
+    |--------------------------------------------------------------------------
+    |
+    | This can mean:
+    |
+    | 1. user does not exist
+    | 2. product already exists in wishlist
+    |
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      updateResult.matchedCount ===
+      0
+    ) {
+      const userExists =
+        await User.exists(
+          {
+            _id:
+              userId,
+          }
+        );
+
+      if (
+        !userExists
+      ) {
+        return NextResponse.json(
+          {
+            success:
+              false,
+
+            message:
+              "User not found",
+          },
+          {
+            status:
+              404,
+          }
+        );
+      }
+
+      /*
+      |--------------------------------------------------------------------------
+      | ALREADY IN WISHLIST
+      |--------------------------------------------------------------------------
+      |
+      | Return success because desired state already exists.
+      |
+      | IMPORTANT:
+      | Do NOT record another wishlist_add event.
+      |
+      |--------------------------------------------------------------------------
+      */
+
+      return NextResponse.json(
+        {
+          success:
+            true,
+
+          added:
+            false,
+
+          alreadyExists:
+            true,
+
+          message:
+            "Already in wishlist",
+        },
+        {
+          status:
+            200,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DATABASE UPDATE SAFETY
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      updateResult.modifiedCount !==
+      1
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Unable to add product to wishlist",
+        },
+        {
+          status:
+            500,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | CUSTOMER BEHAVIOUR LEARNING
+    |--------------------------------------------------------------------------
+    |
+    | We reached this point only when MongoDB actually added the product.
+    |
+    | Therefore:
+    |
+    | one real wishlist add
+    |        ↓
+    | one wishlist_add event
+    |
+    | This event feeds aggregate demand intelligence used by Admin AI.
+    |
+    |--------------------------------------------------------------------------
+    */
+
+    recordWishlistLearningSafely(
+      {
+        userId,
+
+        sessionId:
+          null,
+
+        conversationId:
+          null,
+
+        productId,
+
+        source:
+          "wishlist",
+
+        metadata: {
+          context:
+            "real_wishlist_add",
+
+          productName:
+            product.name,
+
+          category:
+            product.category,
+
+          subCategory:
+            product.subCategory,
+
+          brand:
+            product.brand,
+
+          gender:
+            product.gender,
+
+          fabric:
+            product.fabric,
+
+          fit:
+            product.fit,
+
+          price:
+            product.price,
+
+          stock:
+            product.stock,
+        },
+      }
+    );
+
+    /*
+    |--------------------------------------------------------------------------
+    | SUCCESS
+    |--------------------------------------------------------------------------
+    |
+    | Learning runs safely/background.
+    |
+    | Analytics failure must never reverse or break the real wishlist action.
+    |
+    |--------------------------------------------------------------------------
+    */
 
     return NextResponse.json(
       {
-        success: false,
-        message: error.message || "Something went wrong",
+        success:
+          true,
+
+        added:
+          true,
+
+        alreadyExists:
+          false,
+
+        message:
+          "Added to wishlist",
       },
-      { status: 500 }
+      {
+        status:
+          200,
+      }
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      "WISHLIST ADD ERROR:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success:
+          false,
+
+        message:
+          error instanceof
+          Error
+            ? error.message
+            : "Something went wrong",
+      },
+      {
+        status:
+          500,
+      }
     );
   }
 }
 
+/*
+|--------------------------------------------------------------------------
+| REMOVE FROM WISHLIST
+|--------------------------------------------------------------------------
+|
+| Removing an item is NOT counted as wishlist_add.
+|
+|--------------------------------------------------------------------------
+*/
 
-// ==============================
-// DELETE — Remove from wishlist
-// ==============================
-
-export async function DELETE(req: NextRequest) {
+export async function DELETE(
+  request:
+    NextRequest
+) {
   try {
     await connectDB();
 
-    const userId = getUserId(req);
+    /*
+    |--------------------------------------------------------------------------
+    | AUTH
+    |--------------------------------------------------------------------------
+    */
 
-    if (!userId) {
+    const userId =
+      getUserId(
+        request
+      );
+
+    if (
+      !userId
+    ) {
       return NextResponse.json(
-        { success: false, message: "Please login first" },
-        { status: 401 }
+        {
+          success:
+            false,
+
+          message:
+            "Please login first",
+        },
+        {
+          status:
+            401,
+        }
       );
     }
 
-    const body = await req.json();
-    const { productId } = body;
+    /*
+    |--------------------------------------------------------------------------
+    | BODY
+    |--------------------------------------------------------------------------
+    */
 
-    if (!productId) {
+    let body:
+      {
+        productId?:
+          string;
+      };
+
+    try {
+      body =
+        await request.json();
+    } catch {
       return NextResponse.json(
-        { success: false, message: "Product ID is required" },
-        { status: 400 }
+        {
+          success:
+            false,
+
+          message:
+            "Invalid request body",
+        },
+        {
+          status:
+            400,
+        }
       );
     }
 
-    await User.findByIdAndUpdate(userId, {
-      $pull: { wishlist: productId },
-    });
+    const productId =
+      typeof body?.productId ===
+      "string"
+        ? body.productId.trim()
+        : "";
 
-    return NextResponse.json({
-      success: true,
-      message: "Removed from wishlist",
-    });
-  } catch (error: any) {
-    console.error("WISHLIST REMOVE ERROR:", error);
+    /*
+    |--------------------------------------------------------------------------
+    | VALIDATE PRODUCT ID
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      !productId
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Product ID is required",
+        },
+        {
+          status:
+            400,
+        }
+      );
+    }
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        productId
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Invalid Product ID",
+        },
+        {
+          status:
+            400,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | REMOVE
+    |--------------------------------------------------------------------------
+    */
+
+    const user =
+      await User.findByIdAndUpdate(
+        userId,
+        {
+          $pull: {
+            wishlist:
+              productId,
+          },
+        },
+        {
+          new:
+            true,
+        }
+      );
+
+    if (
+      !user
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "User not found",
+        },
+        {
+          status:
+            404,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SUCCESS
+    |--------------------------------------------------------------------------
+    */
 
     return NextResponse.json(
       {
-        success: false,
-        message: error.message || "Something went wrong",
+        success:
+          true,
+
+        message:
+          "Removed from wishlist",
       },
-      { status: 500 }
+      {
+        status:
+          200,
+      }
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      "WISHLIST REMOVE ERROR:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success:
+          false,
+
+        message:
+          error instanceof
+          Error
+            ? error.message
+            : "Something went wrong",
+      },
+      {
+        status:
+          500,
+      }
     );
   }
 }

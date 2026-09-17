@@ -88,6 +88,7 @@ export default function ImageUpload({
               width={220}
               height={220}
               className="rounded-lg object-cover"
+              loading="eager"
             />
 
             <button

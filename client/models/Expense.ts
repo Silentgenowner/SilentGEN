@@ -2,291 +2,767 @@ import mongoose, {
   Document,
   Model,
   Schema,
+  Types,
 } from "mongoose";
 
+/*
+|--------------------------------------------------------------------------
+| PAYMENT MODE
+|--------------------------------------------------------------------------
+*/
 
-export type ExpenseCategory =
-  | "rent"
-  | "salary"
-  | "courier"
-  | "marketing"
-  | "packaging"
-  | "electricity"
-  | "software"
-  | "transport"
+export type ExpensePaymentMode =
+  | "cash"
+  | "bank"
+  | "upi"
+  | "card"
+  | "cheque"
   | "other";
 
+/*
+|--------------------------------------------------------------------------
+| GST TYPE
+|--------------------------------------------------------------------------
+*/
+
+export type ExpenseGstType =
+  | "intra_state"
+  | "inter_state"
+  | "none";
+
+/*
+|--------------------------------------------------------------------------
+| EXPENSE STATUS
+|--------------------------------------------------------------------------
+*/
+
+export type ExpenseStatus =
+  | "active"
+  | "cancelled";
+
+/*
+|--------------------------------------------------------------------------
+| EXPENSE INTERFACE
+|--------------------------------------------------------------------------
+*/
 
 export interface IExpense
-extends Document {
-
-
+  extends Document {
   expenseNumber: string;
 
+  expenseDate: Date;
 
-  date: Date;
+  category: string;
 
+  description: string;
 
+  vendorName: string;
 
-  category: ExpenseCategory;
+  vendorLedgerId?:
+    | Types.ObjectId
+    | null;
 
+  billNumber: string;
 
+  gstNumber: string;
 
-  title: string;
+  gstType:
+    ExpenseGstType;
 
-
-
-  description?: string;
-
-
-
-  vendorName?: string;
-
-
-
-  vendorGST?: string;
-
-
-
-  amount: number;
-
-
+  taxableAmount: number;
 
   gstRate: number;
 
-
-
   cgst: number;
-
-
 
   sgst: number;
 
-
-
   igst: number;
 
-
+  totalGst: number;
 
   totalAmount: number;
 
-
-
   paymentMode:
-    | "cash"
-    | "bank"
-    | "online"
-    | "credit";
+    ExpensePaymentMode;
 
+  expenseLedgerId:
+    Types.ObjectId;
 
+  paymentLedgerId:
+    Types.ObjectId;
 
-  ledgerId?: mongoose.Types.ObjectId;
+  notes: string;
 
+  status:
+    ExpenseStatus;
 
+  accountingPosted: boolean;
 
-  referenceId?: string;
+  accountingTransactionIds:
+    Types.ObjectId[];
 
+  createdBy?:
+    | Types.ObjectId
+    | null;
 
+  isDeleted: boolean;
 
-  createdBy?: mongoose.Types.ObjectId;
-
-
+  deletedAt?:
+    | Date
+    | null;
 
   createdAt: Date;
 
-
   updatedAt: Date;
-
 }
 
-
-
+/*
+|--------------------------------------------------------------------------
+| EXPENSE SCHEMA
+|--------------------------------------------------------------------------
+*/
 
 const ExpenseSchema =
-new Schema<IExpense>(
-{
+  new Schema<IExpense>(
+    {
+      /*
+      |--------------------------------------------------------------------------
+      | EXPENSE NUMBER
+      |--------------------------------------------------------------------------
+      */
 
-expenseNumber:{
- type:String,
- required:true,
- unique:true,
- trim:true,
-},
+      expenseNumber: {
+        type: String,
 
+        required: true,
 
+        unique: true,
 
-date:{
- type:Date,
- default:Date.now,
-},
+        trim: true,
 
+        index: true,
+      },
 
+      /*
+      |--------------------------------------------------------------------------
+      | EXPENSE DATE
+      |--------------------------------------------------------------------------
+      */
 
+      expenseDate: {
+        type: Date,
 
-category:{
- type:String,
+        required: true,
 
- enum:[
- "rent",
- "salary",
- "courier",
- "marketing",
- "packaging",
- "electricity",
- "software",
- "transport",
- "other",
- ],
+        default: Date.now,
 
- required:true,
+        index: true,
+      },
 
-},
+      /*
+      |--------------------------------------------------------------------------
+      | CATEGORY
+      |--------------------------------------------------------------------------
+      */
 
+      category: {
+        type: String,
 
+        required: true,
 
+        trim: true,
 
-title:{
- type:String,
- required:true,
- trim:true,
-},
+        index: true,
+      },
 
+      /*
+      |--------------------------------------------------------------------------
+      | DESCRIPTION
+      |--------------------------------------------------------------------------
+      */
 
+      description: {
+        type: String,
 
+        required: true,
 
-description:{
- type:String,
- trim:true,
-},
+        trim: true,
+      },
 
+      /*
+      |--------------------------------------------------------------------------
+      | VENDOR
+      |--------------------------------------------------------------------------
+      */
 
+      vendorName: {
+        type: String,
 
+        trim: true,
 
-vendorName:{
- type:String,
- trim:true,
-},
+        default: "",
+      },
 
+      vendorLedgerId: {
+        type:
+          Schema.Types.ObjectId,
 
+        ref:
+          "Ledger",
 
+        default:
+          null,
+      },
 
-vendorGST:{
- type:String,
- uppercase:true,
- trim:true,
-},
+      /*
+      |--------------------------------------------------------------------------
+      | BILL NUMBER
+      |--------------------------------------------------------------------------
+      */
 
+      billNumber: {
+        type: String,
 
+        trim: true,
 
+        default: "",
+      },
 
-amount:{
- type:Number,
- required:true,
- default:0,
-},
+      /*
+      |--------------------------------------------------------------------------
+      | GST NUMBER
+      |--------------------------------------------------------------------------
+      */
 
+      gstNumber: {
+        type: String,
 
+        trim: true,
 
+        uppercase: true,
 
-gstRate:{
- type:Number,
- default:0,
-},
+        default: "",
+      },
 
+      /*
+      |--------------------------------------------------------------------------
+      | GST TYPE
+      |--------------------------------------------------------------------------
+      */
 
+      gstType: {
+        type: String,
 
+        enum: [
+          "intra_state",
+          "inter_state",
+          "none",
+        ],
 
-cgst:{
- type:Number,
- default:0,
-},
+        default:
+          "none",
+      },
 
+      /*
+      |--------------------------------------------------------------------------
+      | TAXABLE AMOUNT
+      |--------------------------------------------------------------------------
+      */
 
+      taxableAmount: {
+        type: Number,
 
+        required: true,
 
-sgst:{
- type:Number,
- default:0,
-},
+        min: 0,
 
+        default: 0,
+      },
 
+      /*
+      |--------------------------------------------------------------------------
+      | GST RATE
+      |--------------------------------------------------------------------------
+      */
 
+      gstRate: {
+        type: Number,
 
-igst:{
- type:Number,
- default:0,
-},
+        min: 0,
 
+        max: 100,
 
+        default: 0,
+      },
 
+      /*
+      |--------------------------------------------------------------------------
+      | CGST
+      |--------------------------------------------------------------------------
+      */
 
-totalAmount:{
- type:Number,
- required:true,
- default:0,
-},
+      cgst: {
+        type: Number,
 
+        min: 0,
 
+        default: 0,
+      },
 
+      /*
+      |--------------------------------------------------------------------------
+      | SGST
+      |--------------------------------------------------------------------------
+      */
 
-paymentMode:{
- type:String,
+      sgst: {
+        type: Number,
 
- enum:[
- "cash",
- "bank",
- "online",
- "credit",
- ],
+        min: 0,
 
- default:"cash",
+        default: 0,
+      },
 
-},
+      /*
+      |--------------------------------------------------------------------------
+      | IGST
+      |--------------------------------------------------------------------------
+      */
 
+      igst: {
+        type: Number,
 
+        min: 0,
 
+        default: 0,
+      },
 
-ledgerId:{
- type:Schema.Types.ObjectId,
- ref:"Ledger",
-},
+      /*
+      |--------------------------------------------------------------------------
+      | TOTAL GST
+      |--------------------------------------------------------------------------
+      */
 
+      totalGst: {
+        type: Number,
 
+        min: 0,
 
+        default: 0,
+      },
 
-referenceId:{
- type:String,
- trim:true,
-},
+      /*
+      |--------------------------------------------------------------------------
+      | TOTAL AMOUNT
+      |--------------------------------------------------------------------------
+      */
 
+      totalAmount: {
+        type: Number,
 
+        required: true,
 
+        min: 0,
 
-createdBy:{
- type:Schema.Types.ObjectId,
- ref:"Admin",
-},
+        default: 0,
+      },
 
+      /*
+      |--------------------------------------------------------------------------
+      | PAYMENT MODE
+      |--------------------------------------------------------------------------
+      */
 
-},
-{
- timestamps:true,
-}
+      paymentMode: {
+        type: String,
 
-);
+        enum: [
+          "cash",
+          "bank",
+          "upi",
+          "card",
+          "cheque",
+          "other",
+        ],
 
+        default:
+          "cash",
+      },
 
+      /*
+      |--------------------------------------------------------------------------
+      | EXPENSE LEDGER
+      |--------------------------------------------------------------------------
+      */
 
+      expenseLedgerId: {
+        type:
+          Schema.Types.ObjectId,
 
+        ref:
+          "Ledger",
+
+        required:
+          true,
+
+        index:
+          true,
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | PAYMENT LEDGER
+      |--------------------------------------------------------------------------
+      */
+
+      paymentLedgerId: {
+        type:
+          Schema.Types.ObjectId,
+
+        ref:
+          "Ledger",
+
+        required:
+          true,
+
+        index:
+          true,
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | NOTES
+      |--------------------------------------------------------------------------
+      */
+
+      notes: {
+        type: String,
+
+        trim: true,
+
+        default: "",
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | STATUS
+      |--------------------------------------------------------------------------
+      */
+
+      status: {
+        type: String,
+
+        enum: [
+          "active",
+          "cancelled",
+        ],
+
+        default:
+          "active",
+
+        index:
+          true,
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | ACCOUNTING POSTED
+      |--------------------------------------------------------------------------
+      */
+
+      accountingPosted: {
+        type: Boolean,
+
+        default:
+          false,
+
+        index:
+          true,
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | ACCOUNTING TRANSACTIONS
+      |--------------------------------------------------------------------------
+      */
+
+      accountingTransactionIds: [
+        {
+          type:
+            Schema.Types.ObjectId,
+
+          ref:
+            "AccountTransaction",
+        },
+      ],
+
+      /*
+      |--------------------------------------------------------------------------
+      | CREATED BY
+      |--------------------------------------------------------------------------
+      */
+
+      createdBy: {
+        type:
+          Schema.Types.ObjectId,
+
+        ref:
+          "Admin",
+
+        default:
+          null,
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | SOFT DELETE
+      |--------------------------------------------------------------------------
+      */
+
+      isDeleted: {
+        type: Boolean,
+
+        default:
+          false,
+
+        index:
+          true,
+      },
+
+      deletedAt: {
+        type: Date,
+
+        default:
+          null,
+      },
+    },
+    {
+      timestamps:
+        true,
+    }
+  );
+
+/*
+|--------------------------------------------------------------------------
+| DATABASE INDEXES
+|--------------------------------------------------------------------------
+*/
+
+/*
+|--------------------------------------------------------------------------
+| CATEGORY + DATE
+|--------------------------------------------------------------------------
+|
+| Expense category report + date filtering.
+|
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  category:
+    1,
+
+  expenseDate:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| STATUS + DATE
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  status:
+    1,
+
+  expenseDate:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| ACTIVE / DELETED + DATE
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  isDeleted:
+    1,
+
+  expenseDate:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| VENDOR + DATE
+|--------------------------------------------------------------------------
+|
+| Vendor-wise expense history.
+|
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  vendorLedgerId:
+    1,
+
+  expenseDate:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| EXPENSE LEDGER + DATE
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  expenseLedgerId:
+    1,
+
+  expenseDate:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| PAYMENT LEDGER + DATE
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  paymentLedgerId:
+    1,
+
+  expenseDate:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| PAYMENT MODE + DATE
+|--------------------------------------------------------------------------
+|
+| Cash / Bank / UPI / Card reports.
+|
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  paymentMode:
+    1,
+
+  expenseDate:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| GST NUMBER + DATE
+|--------------------------------------------------------------------------
+|
+| Vendor GSTIN-wise CA reports.
+|
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  gstNumber:
+    1,
+
+  expenseDate:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| GST TYPE + DATE
+|--------------------------------------------------------------------------
+|
+| Intra-state / Inter-state GST reports.
+|
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  gstType:
+    1,
+
+  expenseDate:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| GST RATE + DATE
+|--------------------------------------------------------------------------
+|
+| GST rate-wise expense report.
+|
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  gstRate:
+    1,
+
+  expenseDate:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| ACCOUNTING POSTED + DATE
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  accountingPosted:
+    1,
+
+  expenseDate:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| BILL NUMBER
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  billNumber:
+    1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| CREATED AT
+|--------------------------------------------------------------------------
+*/
+
+ExpenseSchema.index({
+  createdAt:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| MODEL
+|--------------------------------------------------------------------------
+*/
 
 const Expense:
-Model<IExpense> =
-mongoose.models.Expense ||
-mongoose.model<IExpense>(
-"Expense",
-ExpenseSchema
-);
+  Model<IExpense> =
+  mongoose.models
+    .Expense ||
+  mongoose.model<IExpense>(
+    "Expense",
 
-
+    ExpenseSchema
+  );
 
 export default Expense;

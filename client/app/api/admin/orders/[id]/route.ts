@@ -1,271 +1,280 @@
-import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
+
+import mongoose from "mongoose";
 
 import connectDB from "@/lib/connectDB";
-import Order from "@/models/Order";
-import User from "@/models/User";
+import {
+  verifyAdminToken,
+} from "@/lib/adminAuth";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+import Admin from "@/models/Admin";
+import Order from "@/models/Order";
+
+/*
+|--------------------------------------------------------------------------
+| ROUTE CONTEXT
+|--------------------------------------------------------------------------
+*/
+
+type RouteContext = {
+  params: Promise<{
+    id: string;
+  }>;
+};
+
+/*
+|--------------------------------------------------------------------------
+| GET ORDER DETAILS
+|--------------------------------------------------------------------------
+*/
 
 export async function GET(
-  req: NextRequest,
-  context: {
-    params: Promise<{
-      id: string;
-    }>;
-  }
+  request: NextRequest,
+  context: RouteContext
 ) {
-
   try {
+    /*
+    |--------------------------------------------------------------------------
+    | PARAMS
+    |--------------------------------------------------------------------------
+    */
 
     const { id } =
       await context.params;
 
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        id
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Invalid order id.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DATABASE
+    |--------------------------------------------------------------------------
+    */
+
     await connectDB();
 
-    // ==========================
-    // AUTH CHECK
-    // ==========================
+    /*
+    |--------------------------------------------------------------------------
+    | ADMIN COOKIE
+    |--------------------------------------------------------------------------
+    */
 
     const token =
-      req.cookies.get("token")?.value;
+      request.cookies.get(
+        "adminToken"
+      )?.value;
 
     if (!token) {
-
       return NextResponse.json(
-
         {
-
           success: false,
-
           message:
-            "Please login first",
-
+            "Admin authentication required.",
         },
-
         {
-
           status: 401,
-
         }
-
       );
-
     }
 
-    let decoded: any;
+    /*
+    |--------------------------------------------------------------------------
+    | VERIFY ADMIN TOKEN
+    |--------------------------------------------------------------------------
+    */
+
+    let tokenPayload;
 
     try {
-
-      decoded =
-        jwt.verify(
-          token,
-          JWT_SECRET
+      tokenPayload =
+        await verifyAdminToken(
+          token
         );
-
-    } catch {
-
-      return NextResponse.json(
-
-        {
-
-          success: false,
-
-          message:
-            "Invalid token",
-
-        },
-
-        {
-
-          status: 401,
-
-        }
-
+    } catch (error) {
+      console.error(
+        "ADMIN ORDER DETAIL TOKEN ERROR:",
+        error
       );
 
-    }
-
-    const adminId =
-      decoded.id ||
-      decoded.userId;
-
-    if (!adminId) {
-
       return NextResponse.json(
-
         {
-
           success: false,
-
           message:
-            "Unauthorized",
-
+            "Invalid or expired admin session. Please login again.",
         },
-
         {
-
           status: 401,
-
         }
-
       );
-
     }
 
-    // ==========================
-    // ADMIN CHECK
-    // ==========================
+    /*
+    |--------------------------------------------------------------------------
+    | ADMIN
+    |--------------------------------------------------------------------------
+    */
 
     const admin =
-      await User.findById(adminId);
-
-    if (!admin) {
-
-      return NextResponse.json(
-
-        {
-
-          success: false,
-
-          message:
-            "Admin not found",
-
-        },
-
-        {
-
-          status: 404,
-
-        }
-
-      );
-
-    }
-
-    if (admin.role !== "admin") {
-
-      return NextResponse.json(
-
-        {
-
-          success: false,
-
-          message:
-            "Access denied",
-
-        },
-
-        {
-
-          status: 403,
-
-        }
-
-      );
-
-    }
-    // ==========================
-    // GET ORDER
-    // ==========================
-
-    const order =
-      await Order.findById(id)
-
-        .populate({
-
-          path: "user",
-
-          select:
-            "name email mobile phone",
-
-        })
-
-        .populate({
-
-          path: "items.product",
-
-        })
-
+      await Admin.findById(
+        tokenPayload.adminId
+      )
+        .select(
+          "_id name email role isActive"
+        )
         .lean();
 
-    if (!order) {
-
+    if (!admin) {
       return NextResponse.json(
-
         {
-
           success: false,
-
           message:
-            "Order not found",
-
+            "Admin account not found.",
         },
-
         {
-
           status: 404,
-
         }
-
       );
-
     }
 
-    // ==========================
-    // SUCCESS RESPONSE
-    // ==========================
+    if (
+      admin.isActive ===
+      false
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Admin account is disabled.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ROLE CHECK
+    |--------------------------------------------------------------------------
+    */
+
+    const allowedRoles = [
+      "super_admin",
+      "order_manager",
+      "support_admin",
+    ];
+
+    if (
+      !allowedRoles.includes(
+        String(
+          admin.role || ""
+        )
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "You do not have permission to view this order.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | GET ORDER
+    |--------------------------------------------------------------------------
+    */
+
+    const order =
+      await Order.findById(
+        id
+      )
+        .populate({
+          path: "user",
+          select:
+            "name email mobile phone",
+        })
+        .populate({
+          path:
+            "items.product",
+          select:
+            "name slug sku thumbnail images price mrp",
+        })
+        .lean();
+
+    /*
+    |--------------------------------------------------------------------------
+    | NOT FOUND
+    |--------------------------------------------------------------------------
+    */
+
+    if (!order) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Order not found.",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
 
     return NextResponse.json(
-
       {
-
         success: true,
-
         order,
-
       },
-
       {
-
         status: 200,
-
       }
-
     );
-  } catch (error: any) {
-
-    console.log(
-
+  } catch (error) {
+    console.error(
       "ADMIN ORDER DETAIL ERROR:",
-
       error
-
     );
 
     return NextResponse.json(
-
       {
-
         success: false,
-
         message:
-
-          error.message ||
-
-          "Something went wrong",
-
+          error instanceof
+          Error
+            ? error.message
+            : "Unable to load order.",
       },
-
       {
-
         status: 500,
-
       }
-
     );
-
   }
-
 }
-

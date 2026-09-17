@@ -77,6 +77,7 @@ export default function RelatedProducts({
                   fill
                   sizes="300px"
                   className="object-cover transition duration-300 group-hover:scale-110"
+                  loading="eager"
                 />
 
                 {discount > 0 && (

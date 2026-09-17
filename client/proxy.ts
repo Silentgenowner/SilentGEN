@@ -1,101 +1,393 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
 
-import { verifyAdminToken } from "@/lib/adminAuth";
-import type { AdminRole } from "@/models/Admin";
+import {
+  verifyAdminToken,
+} from "@/lib/adminAuth";
 
-const publicAdminRoutes = ["/admin/login", "/admin/setup"];
+import type {
+  AdminRole,
+} from "@/models/Admin";
 
-const rolePermissions: Record<AdminRole, string[]> = {
+/*
+|--------------------------------------------------------------------------
+| PUBLIC ADMIN ROUTES
+|--------------------------------------------------------------------------
+*/
+
+const publicAdminRoutes = [
+  "/admin/login",
+  "/admin/setup",
+];
+
+/*
+|--------------------------------------------------------------------------
+| ROLE PERMISSIONS
+|--------------------------------------------------------------------------
+*/
+
+const rolePermissions: Record<
+  AdminRole,
+  string[]
+> = {
+  /*
+  |--------------------------------------------------------------------------
+  | SUPER ADMIN
+  |--------------------------------------------------------------------------
+  */
+
   super_admin: [
     "/admin/homepage",
+
     "/admin/products",
+
     "/admin/orders",
+
     "/admin/customers",
+
     "/admin/coupons",
+
     "/admin/reports",
+
     "/admin/settings",
+
+    /*
+    |--------------------------------------------------------------------------
+    | CONTENT MANAGEMENT
+    |--------------------------------------------------------------------------
+    */
+
+    "/admin/content",
+
     "/admin/admins",
+
     "/admin/accounts",
   ],
 
-  product_manager: ["/admin/products"],
+  /*
+  |--------------------------------------------------------------------------
+  | PRODUCT MANAGER
+  |--------------------------------------------------------------------------
+  */
 
-  order_manager: ["/admin/orders"],
+  product_manager: [
+    "/admin/products",
+  ],
 
-  support_admin: ["/admin/orders", "/admin/customers"],
+  /*
+  |--------------------------------------------------------------------------
+  | ORDER MANAGER
+  |--------------------------------------------------------------------------
+  */
 
-  finance_manager: ["/admin/reports", "/admin/coupons", "/admin/accounts"],
+  order_manager: [
+    "/admin/orders",
+  ],
+
+  /*
+  |--------------------------------------------------------------------------
+  | SUPPORT ADMIN
+  |--------------------------------------------------------------------------
+  */
+
+  support_admin: [
+    "/admin/orders",
+
+    "/admin/customers",
+  ],
+
+  /*
+  |--------------------------------------------------------------------------
+  | FINANCE MANAGER
+  |--------------------------------------------------------------------------
+  */
+
+  finance_manager: [
+    "/admin/reports",
+
+    "/admin/coupons",
+
+    "/admin/accounts",
+  ],
 };
 
-function canAccessRoute(role: AdminRole, pathname: string) {
-  // બધા logged-in admins dashboard જોઈ શકે.
-  if (pathname === "/admin") {
+/*
+|--------------------------------------------------------------------------
+| CAN ACCESS ROUTE
+|--------------------------------------------------------------------------
+*/
+
+function canAccessRoute(
+  role: AdminRole,
+  pathname: string
+) {
+  /*
+  |--------------------------------------------------------------------------
+  | DASHBOARD
+  |--------------------------------------------------------------------------
+  |
+  | બધા valid logged-in admins Dashboard જોઈ શકે.
+  |
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    pathname ===
+    "/admin"
+  ) {
     return true;
   }
 
-  return rolePermissions[role].some(
-    (allowedPath) =>
-      pathname === allowedPath || pathname.startsWith(`${allowedPath}/`)
+  /*
+  |--------------------------------------------------------------------------
+  | ROLE PERMISSIONS
+  |--------------------------------------------------------------------------
+  */
+
+  const permissions =
+    rolePermissions[
+      role
+    ] || [];
+
+  return permissions.some(
+    (
+      allowedPath
+    ) =>
+      pathname ===
+        allowedPath ||
+      pathname.startsWith(
+        `${allowedPath}/`
+      )
   );
 }
 
-export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const token = request.cookies.get("adminToken")?.value;
+/*
+|--------------------------------------------------------------------------
+| ADMIN PROXY
+|--------------------------------------------------------------------------
+*/
 
-  const isPublicAdminRoute = publicAdminRoutes.includes(pathname);
+export async function proxy(
+  request: NextRequest
+) {
+  const {
+    pathname,
+  } =
+    request.nextUrl;
 
-  // પહેલેથી login થયેલો admin Login/Setup page ખોલે તો Dashboard પર મોકલો.
-  if (isPublicAdminRoute) {
+  const token =
+    request.cookies.get(
+      "adminToken"
+    )?.value;
+
+  /*
+  |--------------------------------------------------------------------------
+  | PUBLIC ADMIN ROUTE
+  |--------------------------------------------------------------------------
+  */
+
+  const isPublicAdminRoute =
+    publicAdminRoutes.includes(
+      pathname
+    );
+
+  /*
+  |--------------------------------------------------------------------------
+  | LOGIN / SETUP
+  |--------------------------------------------------------------------------
+  |
+  | Admin already logged in હોય તો Login / Setup pageથી Dashboard પર મોકલો.
+  |
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    isPublicAdminRoute
+  ) {
     if (!token) {
       return NextResponse.next();
     }
 
     try {
-      await verifyAdminToken(token);
+      await verifyAdminToken(
+        token
+      );
 
-      return NextResponse.redirect(new URL("/admin", request.url));
+      return NextResponse.redirect(
+        new URL(
+          "/admin",
+          request.url
+        )
+      );
     } catch {
+      /*
+      |--------------------------------------------------------------------------
+      | Invalid token હોય તો Login / Setup page access કરવાની permission.
+      |--------------------------------------------------------------------------
+      */
+
       return NextResponse.next();
     }
   }
 
-  // Protected admin routes માટે token જરૂરી છે.
-  if (!token) {
-    const loginUrl = new URL("/admin/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
+  /*
+  |--------------------------------------------------------------------------
+  | PROTECTED ADMIN ROUTES
+  |--------------------------------------------------------------------------
+  |
+  | Token વગર admin pages open ન થાય.
+  |
+  |--------------------------------------------------------------------------
+  */
 
-    return NextResponse.redirect(loginUrl);
+  if (!token) {
+    const loginUrl =
+      new URL(
+        "/admin/login",
+        request.url
+      );
+
+    loginUrl.searchParams.set(
+      "from",
+      pathname
+    );
+
+    return NextResponse.redirect(
+      loginUrl
+    );
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | VERIFY TOKEN
+  |--------------------------------------------------------------------------
+  */
+
   try {
-    const admin = await verifyAdminToken(token);
+    const admin =
+      await verifyAdminToken(
+        token
+      );
 
-    if (!admin.adminId || !admin.role) {
-      throw new Error("Invalid admin token");
+    /*
+    |--------------------------------------------------------------------------
+    | BASIC PAYLOAD VALIDATION
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      !admin.adminId ||
+      !admin.role
+    ) {
+      throw new Error(
+        "Invalid admin token"
+      );
     }
 
-    // Role પાસે આ page માટે permission ન હોય તો dashboard પર redirect.
-    if (!canAccessRoute(admin.role, pathname)) {
-      const dashboardUrl = new URL("/admin", request.url);
-      dashboardUrl.searchParams.set("error", "unauthorized");
+    /*
+    |--------------------------------------------------------------------------
+    | VALID ROLE
+    |--------------------------------------------------------------------------
+    */
 
-      return NextResponse.redirect(dashboardUrl);
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        rolePermissions,
+        admin.role
+      )
+    ) {
+      throw new Error(
+        "Invalid admin role"
+      );
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ROLE ACCESS
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      !canAccessRoute(
+        admin.role,
+        pathname
+      )
+    ) {
+      const dashboardUrl =
+        new URL(
+          "/admin",
+          request.url
+        );
+
+      dashboardUrl.searchParams.set(
+        "error",
+        "unauthorized"
+      );
+
+      return NextResponse.redirect(
+        dashboardUrl
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ACCESS GRANTED
+    |--------------------------------------------------------------------------
+    */
 
     return NextResponse.next();
-  } catch {
-    const loginUrl = new URL("/admin/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
+  } catch (error) {
+    console.error(
+      "ADMIN_PROXY_AUTH_ERROR:",
+      error
+    );
 
-    const response = NextResponse.redirect(loginUrl);
+    /*
+    |--------------------------------------------------------------------------
+    | INVALID / EXPIRED TOKEN
+    |--------------------------------------------------------------------------
+    */
 
-    response.cookies.delete("adminToken");
+    const loginUrl =
+      new URL(
+        "/admin/login",
+        request.url
+      );
+
+    loginUrl.searchParams.set(
+      "from",
+      pathname
+    );
+
+    const response =
+      NextResponse.redirect(
+        loginUrl
+      );
+
+    /*
+    |--------------------------------------------------------------------------
+    | REMOVE BROKEN TOKEN
+    |--------------------------------------------------------------------------
+    */
+
+    response.cookies.delete(
+      "adminToken"
+    );
 
     return response;
   }
 }
 
+/*
+|--------------------------------------------------------------------------
+| MATCHER
+|--------------------------------------------------------------------------
+*/
+
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: [
+    "/admin/:path*",
+  ],
 };

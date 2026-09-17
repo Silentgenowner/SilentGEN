@@ -1,16 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-import Navbar from "@/components/Navbar/Navbar";
-import Footer from "@/components/Footer/Footer";
-
 import { CartProvider } from "@/context/CartContext";
-import { UserProvider } from "@/context/UserContext";
 import { WishlistProvider } from "@/context/WishlistContext";
 
 export const metadata: Metadata = {
   title: "SilentGEN",
-  description: "SilentGEN Fashion & Accessories",
+  description: "SilentGEN Fashion Store",
 };
 
 export default function RootLayout({
@@ -20,24 +16,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="bg-gray-100 text-black">
-
-        <UserProvider>
-          <CartProvider>
-
-            <WishlistProvider>
-
-              <Navbar />
-
-              <main>{children}</main>
-
-              <Footer />
-
-            </WishlistProvider>
-
-          </CartProvider>
-        </UserProvider>
-
+      <body className="min-h-screen bg-white text-gray-900 antialiased">
+        <CartProvider>
+          <WishlistProvider>
+            {children}
+          </WishlistProvider>
+        </CartProvider>
       </body>
     </html>
   );

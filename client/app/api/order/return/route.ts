@@ -1,183 +1,561 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
+
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 import connectDB from "@/lib/connectDB";
-import Order from "@/models/Order";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+import {
+  ReturnRequestServiceError,
+  submitReturnRequest,
+} from "@/lib/order/submitReturnRequest";
 
-export async function POST(req: NextRequest) {
+/*
+|--------------------------------------------------------------------------
+| TYPES
+|--------------------------------------------------------------------------
+*/
 
+type TokenPayload = {
+  id?: string;
+
+  userId?: string;
+};
+
+type ReturnRequestBody = {
+  orderId?: string;
+
+  reason?: string;
+
+  image?: string;
+};
+
+/*
+|--------------------------------------------------------------------------
+| HELPERS
+|--------------------------------------------------------------------------
+*/
+
+function cleanString(
+  value: unknown
+) {
+  if (
+    typeof value !==
+    "string"
+  ) {
+    return "";
+  }
+
+  return value
+    .trim()
+    .replace(
+      /\s+/g,
+      " "
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| POST RETURN REQUEST
+|--------------------------------------------------------------------------
+|
+| Route:
+|
+| POST /api/order/return
+|
+| Body:
+|
+| {
+|   orderId: "...",
+|   reason: "...",
+|   image?: "..."
+| }
+|
+|--------------------------------------------------------------------------
+*/
+
+export async function POST(
+  req: NextRequest
+) {
   try {
+    /*
+    |--------------------------------------------------------------------------
+    | DATABASE
+    |--------------------------------------------------------------------------
+    */
 
     await connectDB();
 
-    const token =
-      req.cookies.get("token")?.value;
+    /*
+    |--------------------------------------------------------------------------
+    | JWT SECRET
+    |--------------------------------------------------------------------------
+    */
 
-    if (!token) {
+    const jwtSecret =
+      process.env
+        .JWT_SECRET
+        ?.trim();
 
+    if (
+      !jwtSecret
+    ) {
       return NextResponse.json(
         {
-          success: false,
-          message: "Please login first",
+          success:
+            false,
+
+          message:
+            "Server authentication configuration is missing.",
         },
         {
-          status: 401,
+          status:
+            500,
         }
       );
-
     }
 
-    let decoded: any;
+    /*
+    |--------------------------------------------------------------------------
+    | AUTH TOKEN
+    |--------------------------------------------------------------------------
+    */
+
+    const token =
+      req.cookies.get(
+        "token"
+      )?.value;
+
+    if (
+      !token
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Please login first.",
+        },
+        {
+          status:
+            401,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | VERIFY TOKEN
+    |--------------------------------------------------------------------------
+    */
+
+    let decoded:
+      TokenPayload;
 
     try {
-
       decoded =
         jwt.verify(
           token,
-          JWT_SECRET
-        );
-
+          jwtSecret
+        ) as TokenPayload;
     } catch {
-
       return NextResponse.json(
         {
-          success: false,
-          message: "Invalid token",
+          success:
+            false,
+
+          message:
+            "Invalid or expired login session.",
         },
         {
-          status: 401,
+          status:
+            401,
         }
       );
-
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | USER ID
+    |--------------------------------------------------------------------------
+    */
 
     const userId =
-      decoded.id ||
-      decoded.userId;
-
-    const body =
-      await req.json();
-
-    const {
-      orderId,
-      reason,
-    } = body;
-
-    if (!orderId || !reason) {
-
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Order ID and reason are required",
-        },
-        {
-          status: 400,
-        }
+      cleanString(
+        decoded.id ||
+          decoded.userId
       );
 
+    if (
+      !userId ||
+      !mongoose.Types.ObjectId.isValid(
+        userId
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Invalid customer account.",
+        },
+        {
+          status:
+            401,
+        }
+      );
     }
 
-    const order =
-      await Order.findOne({
+    /*
+    |--------------------------------------------------------------------------
+    | BODY
+    |--------------------------------------------------------------------------
+    */
 
-        _id: orderId,
+    let body:
+      ReturnRequestBody;
 
-        user: userId,
-
-      });
-
-    if (!order) {
-
+    try {
+      body =
+        (
+          await req.json()
+        ) as ReturnRequestBody;
+    } catch {
       return NextResponse.json(
         {
-          success: false,
-          message: "Order not found",
+          success:
+            false,
+
+          message:
+            "Invalid request body.",
         },
         {
-          status: 404,
+          status:
+            400,
         }
       );
+    }
 
+    /*
+    |--------------------------------------------------------------------------
+    | ORDER ID
+    |--------------------------------------------------------------------------
+    */
+
+    const orderId =
+      cleanString(
+        body.orderId
+      );
+
+    if (
+      !orderId
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Order ID is required.",
+        },
+        {
+          status:
+            400,
+        }
+      );
     }
 
     if (
-      order.orderStatus !==
-      "Delivered"
+      !mongoose.Types.ObjectId.isValid(
+        orderId
+      )
     ) {
-
       return NextResponse.json(
         {
-          success: false,
+          success:
+            false,
+
           message:
-            "Only delivered orders can be returned",
+            "Invalid order id.",
         },
         {
-          status: 400,
+          status:
+            400,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | REASON
+    |--------------------------------------------------------------------------
+    */
+
+    const reason =
+      cleanString(
+        body.reason
+      );
+
+    if (
+      !reason
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Please provide a reason for the return.",
+        },
+        {
+          status:
+            400,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | OPTIONAL IMAGE
+    |--------------------------------------------------------------------------
+    */
+
+    const image =
+      cleanString(
+        body.image
+      );
+
+    /*
+    |--------------------------------------------------------------------------
+    | SHARED RETURN SERVICE
+    |--------------------------------------------------------------------------
+    |
+    | IMPORTANT:
+    |
+    | This route intentionally does NOT contain its own:
+    |
+    | - Delivered status validation
+    | - duplicate return validation
+    | - returnRequest DB update
+    | - orderStatus update
+    | - deliveryHistory update
+    | - learning event creation
+    |
+    | All of that is centralized inside:
+    |
+    | lib/order/submitReturnRequest.ts
+    |
+    |--------------------------------------------------------------------------
+    */
+
+    const result =
+      await submitReturnRequest(
+        {
+          userId,
+
+          orderId,
+
+          reason,
+
+          image:
+            image ||
+            null,
+
+          channel:
+            "website_flat_route",
         }
       );
 
-    }
+    const order =
+      result.order;
 
-    order.orderStatus =
-      "Return Requested";
+    /*
+    |--------------------------------------------------------------------------
+    | SUCCESS RESPONSE
+    |--------------------------------------------------------------------------
+    */
 
-    order.returnRequest = {
+    return NextResponse.json(
+      {
+        success:
+          true,
 
-      reason,
+        message:
+          "Return request submitted successfully.",
 
-      status: "Pending",
+        order: {
+          /*
+          |--------------------------------------------------------------------------
+          | ORDER ID
+          |--------------------------------------------------------------------------
+          */
 
-      requestedAt:
-        new Date(),
+          orderId:
+            String(
+              order._id
+            ),
 
-    };
+          /*
+          |--------------------------------------------------------------------------
+          | ORDER STATUS
+          |--------------------------------------------------------------------------
+          */
 
-    order.deliveryHistory.push({
+          orderStatus:
+            order.orderStatus,
 
-      status:
-        "Return Requested" as any,
+          /*
+          |--------------------------------------------------------------------------
+          | RETURN REQUEST
+          |--------------------------------------------------------------------------
+          */
 
-      date:
-        new Date(),
+          returnRequest:
+            order.returnRequest,
 
-      note:
-        "Return requested by customer",
+          /*
+          |--------------------------------------------------------------------------
+          | REFUND STATUS
+          |--------------------------------------------------------------------------
+          |
+          | IMPORTANT:
+          |
+          | Return Requested does NOT automatically mean:
+          |
+          | refundStatus = Requested
+          |
+          | Admin approval / completed return / refund flow is separate.
+          |
+          |--------------------------------------------------------------------------
+          */
 
-    });
+          refundStatus:
+            order.refundStatus,
 
-    await order.save();
+          /*
+          |--------------------------------------------------------------------------
+          | PAYMENT
+          |--------------------------------------------------------------------------
+          */
 
-    return NextResponse.json({
+          paymentStatus:
+            order.paymentStatus,
 
-      success: true,
+          paymentMethod:
+            order.paymentMethod,
 
-      message:
-        "Return request submitted successfully",
+          /*
+          |--------------------------------------------------------------------------
+          | TOTAL
+          |--------------------------------------------------------------------------
+          */
 
-    });
+          totalAmount:
+            order.totalAmount,
 
-  } catch (error: any) {
+          /*
+          |--------------------------------------------------------------------------
+          | UPDATED
+          |--------------------------------------------------------------------------
+          */
 
-    console.log(
+          updatedAt:
+            order.updatedAt,
+        },
+      },
+      {
+        status:
+          200,
+      }
+    );
+  } catch (
+    error: unknown
+  ) {
+    /*
+    |--------------------------------------------------------------------------
+    | LOG
+    |--------------------------------------------------------------------------
+    */
+
+    console.error(
       "RETURN REQUEST ERROR:",
       error
     );
 
+    /*
+    |--------------------------------------------------------------------------
+    | KNOWN BUSINESS ERROR
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      error instanceof
+      ReturnRequestServiceError
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            error.message,
+        },
+        {
+          status:
+            error.status,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | MONGOOSE VALIDATION ERROR
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      error instanceof
+      mongoose.Error.ValidationError
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Return request validation failed.",
+        },
+        {
+          status:
+            400,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | UNKNOWN ERROR
+    |--------------------------------------------------------------------------
+    */
+
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
+
         message:
-          error.message ||
-          "Server Error",
+          "Return request failed. Please try again.",
       },
       {
-        status: 500,
+        status:
+          500,
       }
     );
-
   }
-
 }

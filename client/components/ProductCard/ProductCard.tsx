@@ -1,479 +1,1883 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+
+import {
+  PointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import WishlistButton from "@/components/WishlistButton/WishlistButton";
-import { useCart } from "@/context/CartContext";
+
+/*
+|--------------------------------------------------------------------------
+| TYPES
+|--------------------------------------------------------------------------
+*/
+
+type Product360Frame = {
+  angle: number;
+
+  name?: string;
+
+  url?: string;
+
+  base64?: string;
+
+  mimeType?: string;
+};
+
+type Product360 = {
+  enabled?: boolean;
+
+  frames?: Product360Frame[];
+};
+
+/*
+|--------------------------------------------------------------------------
+| PRODUCT REEL VIDEO
+|--------------------------------------------------------------------------
+*/
+
+type ProductReelVideo = {
+  enabled?: boolean;
+
+  url?: string;
+
+  publicId?: string;
+
+  duration?: number;
+
+  poster?: string;
+};
+
+type ColorVariant = {
+  color: string;
+
+  images?: string[];
+
+  view360Images?: string[];
+
+  product360?: Product360;
+};
 
 type Props = {
   id: string;
+
   name: string;
+
   slug: string;
+
   price: number;
+
   mrp: number;
+
   image: string;
+
   images?: string[];
+
   category: string;
+
   discount?: number;
+
   rating?: number;
+
   stock?: number;
+
   sizes?: string[];
+
   colors?: string[];
-};
 
-export default function ProductCard({
-  id,
-  name,
-  slug,
-  price,
-  mrp,
-  image,
-  images = [],
-  category,
-  discount = 0,
-  rating = 0,
-  stock = 0,
-  sizes = [],
-  colors = [],
-}: Props) {
-  const router = useRouter();
+  colorVariants?: ColorVariant[];
 
-  const {
-    cart,
-    addToCart,
-    updateQuantity,
-    removeFromCart,
-  } = useCart();
-
-  const [adding, setAdding] = useState(false);
-
-  const [selectedSize, setSelectedSize] = useState("");
-
-  const [selectedColor, setSelectedColor] = useState("");
-
-  const [currentImage, setCurrentImage] = useState(0);
+  product360?: Product360;
 
   /*
   |--------------------------------------------------------------------------
-  | Product Images
+  | OPTIONAL REEL
   |--------------------------------------------------------------------------
   */
 
-  const productImages = useMemo(() => {
-    const allImages = [
-      image,
-      ...images,
-    ];
+  reelVideo?: ProductReelVideo;
+};
 
-    const validImages = allImages.filter(
-      (img) =>
-        typeof img === "string" &&
-        img.trim() !== ""
+/*
+|--------------------------------------------------------------------------
+| CLEAN IMAGE ARRAY
+|--------------------------------------------------------------------------
+*/
+
+function cleanImageArray(
+  value: unknown
+): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .filter(
+          (
+            item
+          ): item is string =>
+            typeof item ===
+            "string"
+        )
+        .map((item) =>
+          item.trim()
+        )
+        .filter(Boolean)
+    )
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
+| GET FRAME URL
+|--------------------------------------------------------------------------
+*/
+
+function getFrameUrl(
+  frame: Product360Frame
+): string {
+  if (
+    typeof frame?.url ===
+      "string" &&
+    frame.url.trim()
+  ) {
+    return frame.url.trim();
+  }
+
+  if (
+    typeof frame?.base64 ===
+      "string" &&
+    frame.base64.trim()
+  ) {
+    const mimeType =
+      typeof frame.mimeType ===
+        "string" &&
+      frame.mimeType.trim()
+        ? frame.mimeType.trim()
+        : "image/png";
+
+    return `data:${mimeType};base64,${frame.base64}`;
+  }
+
+  return "";
+}
+
+/*
+|--------------------------------------------------------------------------
+| GET 360 IMAGES
+|--------------------------------------------------------------------------
+*/
+
+function get360Images(
+  product360:
+    | Product360
+    | undefined
+): string[] {
+  if (
+    !Array.isArray(
+      product360?.frames
+    )
+  ) {
+    return [];
+  }
+
+  const sortedFrames = [
+    ...product360.frames,
+  ]
+    .filter(Boolean)
+    .sort(
+      (a, b) =>
+        Number(
+          a?.angle ?? 0
+        ) -
+        Number(
+          b?.angle ?? 0
+        )
     );
 
-    const uniqueImages = Array.from(
-      new Set(validImages)
-    );
+  return cleanImageArray(
+    sortedFrames.map(
+      (frame) =>
+        getFrameUrl(frame)
+    )
+  );
+}
 
-    if (uniqueImages.length === 0) {
-      return ["/images/no-image.png"];
-    }
+/*
+|--------------------------------------------------------------------------
+| PRODUCT CARD
+|--------------------------------------------------------------------------
+*/
 
-    return uniqueImages;
-  }, [image, images]);
+export default function ProductCard({
+  id,
+
+  name,
+
+  slug,
+
+  price,
+
+  mrp,
+
+  image,
+
+  images = [],
+
+  category,
+
+  discount = 0,
+
+  rating = 0,
+
+  stock = 0,
+
+  colors = [],
+
+  colorVariants = [],
+
+  product360,
+
+  reelVideo,
+}: Props) {
+  /*
+  |--------------------------------------------------------------------------
+  | PRODUCT URL
+  |--------------------------------------------------------------------------
+  */
+
+  const productUrl =
+    `/product/${id}`;
 
   /*
   |--------------------------------------------------------------------------
-  | Reset Image When Product Changes
+  | VIDEO REF
+  |--------------------------------------------------------------------------
+  */
+
+  const videoRef =
+    useRef<HTMLVideoElement | null>(
+      null
+    );
+
+  /*
+  |--------------------------------------------------------------------------
+  | REEL MODE
+  |--------------------------------------------------------------------------
+  */
+
+  const [
+    showReel,
+    setShowReel,
+  ] =
+    useState(false);
+
+  /*
+  |--------------------------------------------------------------------------
+  | SELECTED COLOR
+  |--------------------------------------------------------------------------
+  */
+
+  const [
+    selectedColor,
+    setSelectedColor,
+  ] =
+    useState("");
+
+  /*
+  |--------------------------------------------------------------------------
+  | NORMAL IMAGE INDEX
+  |--------------------------------------------------------------------------
+  */
+
+  const [
+    currentImage,
+    setCurrentImage,
+  ] =
+    useState(0);
+
+  /*
+  |--------------------------------------------------------------------------
+  | 360 INDEX
+  |--------------------------------------------------------------------------
+  */
+
+  const [
+    current360Frame,
+    setCurrent360Frame,
+  ] =
+    useState(0);
+
+  /*
+  |--------------------------------------------------------------------------
+  | 360 DRAG STATE
+  |--------------------------------------------------------------------------
+  */
+
+  const lastDragXRef =
+    useRef<number | null>(
+      null
+    );
+
+  const draggingRef =
+    useRef(false);
+
+  const [
+    dragging360,
+    setDragging360,
+  ] =
+    useState(false);
+
+  /*
+  |--------------------------------------------------------------------------
+  | REEL URL
+  |--------------------------------------------------------------------------
+  */
+
+  const reelUrl =
+    useMemo(() => {
+      if (
+        typeof reelVideo?.url !==
+        "string"
+      ) {
+        return "";
+      }
+
+      return reelVideo.url.trim();
+    }, [
+      reelVideo?.url,
+    ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | HAS PRODUCT REEL
+  |--------------------------------------------------------------------------
+  |
+  | enabled undefined + URL exists:
+  | old/imported data પણ ચાલશે.
+  |
+  |--------------------------------------------------------------------------
+  */
+
+  const hasReel =
+    useMemo(() => {
+      if (!reelUrl) {
+        return false;
+      }
+
+      if (
+        reelVideo?.enabled ===
+        false
+      ) {
+        return false;
+      }
+
+      return true;
+    }, [
+      reelUrl,
+      reelVideo?.enabled,
+    ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | SELECTED COLOR VARIANT
+  |--------------------------------------------------------------------------
+  */
+
+  const selectedColorVariant =
+    useMemo(() => {
+      if (!selectedColor) {
+        return null;
+      }
+
+      const normalizedColor =
+        selectedColor
+          .trim()
+          .toLowerCase();
+
+      return (
+        colorVariants.find(
+          (variant) =>
+            typeof variant?.color ===
+              "string" &&
+            variant.color
+              .trim()
+              .toLowerCase() ===
+              normalizedColor
+        ) || null
+      );
+    }, [
+      selectedColor,
+      colorVariants,
+    ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | DEFAULT PRODUCT IMAGES
+  |--------------------------------------------------------------------------
+  */
+
+  const defaultProductImages =
+    useMemo(() => {
+      const list =
+        cleanImageArray([
+          image,
+
+          ...images,
+        ]);
+
+      if (
+        list.length >
+        0
+      ) {
+        return list;
+      }
+
+      return [
+        "/images/no-image.png",
+      ];
+    }, [
+      image,
+      images,
+    ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | REEL POSTER
+  |--------------------------------------------------------------------------
+  */
+
+  const reelPoster =
+    useMemo(() => {
+      const poster =
+        typeof reelVideo?.poster ===
+          "string"
+          ? reelVideo.poster.trim()
+          : "";
+
+      return (
+        poster ||
+        defaultProductImages[0] ||
+        "/images/no-image.png"
+      );
+    }, [
+      reelVideo?.poster,
+      defaultProductImages,
+    ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | SELECTED COLOR IMAGES
+  |--------------------------------------------------------------------------
+  */
+
+  const selectedColorImages =
+    useMemo(() => {
+      return cleanImageArray(
+        selectedColorVariant
+          ?.images
+      );
+    }, [
+      selectedColorVariant,
+    ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | ACTIVE NORMAL IMAGES
+  |--------------------------------------------------------------------------
+  */
+
+  const productImages =
+    useMemo(() => {
+      if (
+        selectedColor &&
+        selectedColorImages.length >
+          0
+      ) {
+        return selectedColorImages;
+      }
+
+      return defaultProductImages;
+    }, [
+      selectedColor,
+      selectedColorImages,
+      defaultProductImages,
+    ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | MAIN 360
+  |--------------------------------------------------------------------------
+  */
+
+  const main360Images =
+    useMemo(() => {
+      return get360Images(
+        product360
+      );
+    }, [
+      product360,
+    ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | COLOR AI 360
+  |--------------------------------------------------------------------------
+  */
+
+  const colorProduct360Images =
+    useMemo(() => {
+      return get360Images(
+        selectedColorVariant
+          ?.product360
+      );
+    }, [
+      selectedColorVariant,
+    ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | COLOR LEGACY 360
+  |--------------------------------------------------------------------------
+  */
+
+  const legacyColor360Images =
+    useMemo(() => {
+      return cleanImageArray(
+        selectedColorVariant
+          ?.view360Images
+      );
+    }, [
+      selectedColorVariant,
+    ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | ACTIVE COLOR 360
+  |--------------------------------------------------------------------------
+  */
+
+  const color360Images =
+    useMemo(() => {
+      if (
+        colorProduct360Images.length >
+        1
+      ) {
+        return colorProduct360Images;
+      }
+
+      return legacyColor360Images;
+    }, [
+      colorProduct360Images,
+      legacyColor360Images,
+    ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | ACTIVE 360
+  |--------------------------------------------------------------------------
+  |
+  | No selected color:
+  | -> Main 360
+  |
+  | Selected color own 360:
+  | -> Color 360
+  |
+  | Selected color no 360:
+  | -> Normal selected color images
+  |
+  |--------------------------------------------------------------------------
+  */
+
+  const active360Images =
+    useMemo(() => {
+      if (selectedColor) {
+        if (
+          color360Images.length >
+          1
+        ) {
+          return color360Images;
+        }
+
+        return [];
+      }
+
+      return main360Images;
+    }, [
+      selectedColor,
+      color360Images,
+      main360Images,
+    ]);
+
+  const has360 =
+    active360Images.length >
+    1;
+
+  /*
+  |--------------------------------------------------------------------------
+  | REEL AVAILABLE FOR CURRENT VIEW
+  |--------------------------------------------------------------------------
+  |
+  | Product reel main product માટે છે.
+  | Color select કર્યા પછી color images / 360 ને priority.
+  |
+  |--------------------------------------------------------------------------
+  */
+
+  const hasActiveReel =
+    hasReel &&
+    !selectedColor;
+
+  /*
+  |--------------------------------------------------------------------------
+  | RESET ON PRODUCT CHANGE
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    setSelectedColor("");
+
+    setCurrentImage(0);
+
+    setCurrent360Frame(0);
+
+    setShowReel(false);
+  }, [
+    id,
+  ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | RESET ON COLOR CHANGE
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
     setCurrentImage(0);
-  }, [id]);
+
+    setCurrent360Frame(0);
+
+    /*
+     * Color select કરતાં reelમાંથી
+     * color image / 360 પર પાછા જવું.
+     */
+
+    setShowReel(false);
+  }, [
+    selectedColor,
+  ]);
 
   /*
   |--------------------------------------------------------------------------
-  | Auto Image Slider
+  | SAFE IMAGE INDEX
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
-    if (productImages.length <= 1) {
-      return;
+    if (
+      currentImage >=
+      productImages.length
+    ) {
+      setCurrentImage(0);
     }
-
-    const timer = setInterval(() => {
-      setCurrentImage((previous) => {
-        if (
-          previous >=
-          productImages.length - 1
-        ) {
-          return 0;
-        }
-
-        return previous + 1;
-      });
-    }, 3500);
-
-    return () => {
-      clearInterval(timer);
-    };
-  }, [productImages.length]);
+  }, [
+    currentImage,
+    productImages.length,
+  ]);
 
   /*
   |--------------------------------------------------------------------------
-  | Previous Image
+  | SAFE 360 INDEX
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    if (
+      current360Frame >=
+      active360Images.length
+    ) {
+      setCurrent360Frame(0);
+    }
+  }, [
+    current360Frame,
+    active360Images.length,
+  ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | VIDEO PLAY / PAUSE
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    const video =
+      videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    if (
+      showReel &&
+      hasActiveReel
+    ) {
+      video.muted = true;
+
+      const playPromise =
+        video.play();
+
+      if (
+        playPromise &&
+        typeof playPromise.catch ===
+          "function"
+      ) {
+        playPromise.catch(
+          () => {
+            /*
+             * Browser may block autoplay.
+             * Video remains available.
+             */
+          }
+        );
+      }
+
+      return;
+    }
+
+    video.pause();
+
+    try {
+      video.currentTime = 0;
+    } catch {
+      //
+    }
+  }, [
+    showReel,
+    hasActiveReel,
+    reelUrl,
+  ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | IMAGE NAVIGATION
   |--------------------------------------------------------------------------
   */
 
   function previousImage() {
-    setCurrentImage((previous) => {
-      if (previous <= 0) {
-        return productImages.length - 1;
-      }
+    if (
+      productImages.length <=
+      1
+    ) {
+      return;
+    }
 
-      return previous - 1;
-    });
+    setCurrentImage(
+      (previous) =>
+        previous <= 0
+          ? productImages.length -
+            1
+          : previous - 1
+    );
   }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Next Image
-  |--------------------------------------------------------------------------
-  */
 
   function nextImage() {
-    setCurrentImage((previous) => {
-      if (
+    if (
+      productImages.length <=
+      1
+    ) {
+      return;
+    }
+
+    setCurrentImage(
+      (previous) =>
         previous >=
-        productImages.length - 1
-      ) {
-        return 0;
-      }
-
-      return previous + 1;
-    });
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Safe Product ID
-  |--------------------------------------------------------------------------
-  */
-
-  function getProductId(
-    productId: unknown
-  ) {
-    if (
-      typeof productId ===
-      "string"
-    ) {
-      return productId;
-    }
-
-    if (
-      productId &&
-      typeof productId ===
-        "object" &&
-      "_id" in productId
-    ) {
-      return String(
-        (
-          productId as {
-            _id: string;
-          }
-        )._id
-      );
-    }
-
-    return "";
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Cart Item
-  |--------------------------------------------------------------------------
-  */
-
-  const cartItem = cart.find(
-    (item: any) =>
-      getProductId(item.productId) ===
-        id &&
-      (item.size || "") ===
-        selectedSize &&
-      (item.color || "") ===
-        selectedColor
-  );
-
-  /*
-  |--------------------------------------------------------------------------
-  | Stock
-  |--------------------------------------------------------------------------
-  */
-
-  const isOutOfStock =
-    stock <= 0;
-
-  const isLowStock =
-    stock > 0 && stock <= 5;
-
-  /*
-  |--------------------------------------------------------------------------
-  | Add To Cart
-  |--------------------------------------------------------------------------
-  */
-
-  async function handleAddCart() {
-    if (
-      sizes.length > 0 &&
-      !selectedSize
-    ) {
-      alert(
-        "Please select size"
-      );
-
-      return;
-    }
-
-    if (
-      colors.length > 0 &&
-      !selectedColor
-    ) {
-      alert(
-        "Please select color"
-      );
-
-      return;
-    }
-
-    if (isOutOfStock) {
-      alert(
-        "Product is out of stock"
-      );
-
-      return;
-    }
-
-    try {
-      setAdding(true);
-
-      const success =
-        await addToCart(
-          id,
-          1,
-          selectedSize,
-          selectedColor
-        );
-
-      if (!success) {
-        router.push("/login");
-      }
-    } catch (error) {
-      console.error(
-        "ADD CART ERROR:",
-        error
-      );
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Stock Status
-  |--------------------------------------------------------------------------
-  */
-
-  function StockStatus() {
-    if (stock <= 0) {
-      return (
-        <span
-          className="
-            rounded-full
-            bg-red-100
-            px-3
-            py-1
-            text-xs
-            font-semibold
-            text-red-600
-          "
-        >
-          Out Of Stock
-        </span>
-      );
-    }
-
-    if (isLowStock) {
-      return (
-        <span
-          className="
-            rounded-full
-            bg-orange-100
-            px-3
-            py-1
-            text-xs
-            font-semibold
-            text-orange-600
-          "
-        >
-          Only {stock} Left
-        </span>
-      );
-    }
-
-    return (
-      <span
-        className="
-          rounded-full
-          bg-green-100
-          px-3
-          py-1
-          text-xs
-          font-semibold
-          text-green-600
-        "
-      >
-        In Stock
-      </span>
+        productImages.length -
+          1
+          ? 0
+          : previous + 1
     );
   }
 
   /*
   |--------------------------------------------------------------------------
-  | Rating
+  | 360 NAVIGATION
+  |--------------------------------------------------------------------------
+  */
+
+  function previous360Frame() {
+    if (
+      active360Images.length <=
+      1
+    ) {
+      return;
+    }
+
+    setCurrent360Frame(
+      (previous) =>
+        previous <= 0
+          ? active360Images.length -
+            1
+          : previous - 1
+    );
+  }
+
+  function next360Frame() {
+    if (
+      active360Images.length <=
+      1
+    ) {
+      return;
+    }
+
+    setCurrent360Frame(
+      (previous) =>
+        previous >=
+        active360Images.length -
+          1
+          ? 0
+          : previous + 1
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | TOGGLE REEL
+  |--------------------------------------------------------------------------
+  */
+
+  function toggleReel() {
+    if (!hasActiveReel) {
+      return;
+    }
+
+    setShowReel(
+      (previous) =>
+        !previous
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | COLOR SELECT
+  |--------------------------------------------------------------------------
+  */
+
+  function handleColorSelect(
+    color: string
+  ) {
+    const current =
+      selectedColor
+        .trim()
+        .toLowerCase();
+
+    const next =
+      color
+        .trim()
+        .toLowerCase();
+
+    if (current === next) {
+      setSelectedColor("");
+
+      return;
+    }
+
+    setSelectedColor(
+      color
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | COLOR VALUE
+  |--------------------------------------------------------------------------
+  */
+
+  function getColorValue(
+    color: string
+  ) {
+    const value =
+      color
+        .toLowerCase()
+        .trim();
+
+    const colorMap: Record<
+      string,
+      string
+    > = {
+      black: "#111111",
+
+      white: "#ffffff",
+
+      red: "#dc2626",
+
+      blue: "#2563eb",
+
+      "light blue":
+        "#93c5fd",
+
+      "premium blue":
+        "#1d4ed8",
+
+      "premium light blue":
+        "#7dd3fc",
+
+      navy:
+        "#172554",
+
+      "navy blue":
+        "#172554",
+
+      green:
+        "#16a34a",
+
+      "dark green":
+        "#166534",
+
+      yellow:
+        "#facc15",
+
+      gold:
+        "#f3b61f",
+
+      orange:
+        "#f97316",
+
+      pink:
+        "#ec4899",
+
+      purple:
+        "#9333ea",
+
+      violet:
+        "#7c3aed",
+
+      brown:
+        "#78350f",
+
+      beige:
+        "#d6c5a5",
+
+      cream:
+        "#f5f0df",
+
+      "off white":
+        "#f8f5e9",
+
+      grey:
+        "#9ca3af",
+
+      gray:
+        "#9ca3af",
+
+      charcoal:
+        "#364152",
+
+      maroon:
+        "#7f1d1d",
+
+      olive:
+        "#737d3c",
+
+      khaki:
+        "#c3b091",
+
+      silver:
+        "#c0c0c0",
+    };
+
+    return (
+      colorMap[value] ||
+      color
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | FIND COLOR VARIANT
+  |--------------------------------------------------------------------------
+  */
+
+  function findColorVariant(
+    color: string
+  ) {
+    const normalized =
+      color
+        .trim()
+        .toLowerCase();
+
+    return (
+      colorVariants.find(
+        (variant) =>
+          typeof variant?.color ===
+            "string" &&
+          variant.color
+            .trim()
+            .toLowerCase() ===
+            normalized
+      ) || null
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | COLOR HAS 360
+  |--------------------------------------------------------------------------
+  */
+
+  function colorHas360(
+    color: string
+  ) {
+    const variant =
+      findColorVariant(
+        color
+      );
+
+    if (!variant) {
+      return false;
+    }
+
+    const new360Images =
+      get360Images(
+        variant.product360
+      );
+
+    if (
+      new360Images.length >
+      1
+    ) {
+      return true;
+    }
+
+    return (
+      cleanImageArray(
+        variant.view360Images
+      ).length > 1
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | 360 POINTER DOWN
+  |--------------------------------------------------------------------------
+  */
+
+  function handle360PointerDown(
+    event:
+      PointerEvent<HTMLDivElement>
+  ) {
+    if (!has360) {
+      return;
+    }
+
+    event.currentTarget
+      .setPointerCapture?.(
+        event.pointerId
+      );
+
+    lastDragXRef.current =
+      event.clientX;
+
+    draggingRef.current =
+      true;
+
+    setDragging360(true);
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | 360 POINTER MOVE
+  |--------------------------------------------------------------------------
+  */
+
+  function handle360PointerMove(
+    event:
+      PointerEvent<HTMLDivElement>
+  ) {
+    if (
+      !has360 ||
+      !draggingRef.current ||
+      lastDragXRef.current ===
+        null
+    ) {
+      return;
+    }
+
+    const difference =
+      event.clientX -
+      lastDragXRef.current;
+
+    const threshold =
+      7;
+
+    if (
+      Math.abs(
+        difference
+      ) < threshold
+    ) {
+      return;
+    }
+
+    if (difference > 0) {
+      previous360Frame();
+    } else {
+      next360Frame();
+    }
+
+    lastDragXRef.current =
+      event.clientX;
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | FINISH 360 DRAG
+  |--------------------------------------------------------------------------
+  */
+
+  function finish360Drag() {
+    draggingRef.current =
+      false;
+
+    lastDragXRef.current =
+      null;
+
+    setDragging360(false);
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | RATING
   |--------------------------------------------------------------------------
   */
 
   function ProductRating() {
+    const safeRating =
+      Math.max(
+        0,
+        Math.min(
+          5,
+          Number(
+            rating || 0
+          )
+        )
+      );
+
     return (
       <div
         className="
           flex
           items-center
-          gap-1
+          gap-[2px]
+          text-[11px]
+          leading-none
         "
+        aria-label={`Rating ${safeRating.toFixed(
+          1
+        )} out of 5`}
       >
-        {[1, 2, 3, 4, 5].map(
-          (star) => (
-            <span
-              key={star}
-              className={
-                star <=
-                Math.round(
-                  rating
+        {[0, 1, 2, 3, 4].map(
+          (star) => {
+            const fill =
+              Math.max(
+                0,
+                Math.min(
+                  1,
+                  safeRating -
+                    star
                 )
-                  ? "text-yellow-500"
-                  : "text-gray-300"
-              }
-            >
-              ★
-            </span>
-          )
+              ) * 100;
+
+            return (
+              <span
+                key={star}
+                className="
+                  relative
+                  inline-block
+                  h-[13px]
+                  w-[13px]
+                "
+              >
+                <span
+                  className="
+                    absolute
+                    inset-0
+                    text-gray-300
+                  "
+                >
+                  ★
+                </span>
+
+                <span
+                  className="
+                    absolute
+                    inset-0
+                    overflow-hidden
+                    text-[#F3B61F]
+                  "
+                  style={{
+                    width:
+                      `${fill}%`,
+                  }}
+                >
+                  ★
+                </span>
+              </span>
+            );
+          }
         )}
 
         <span
           className="
             ml-1
-            text-xs
+            text-[11px]
             text-gray-500
           "
         >
-          {rating.toFixed(1)}
+          {safeRating.toFixed(
+            1
+          )}
         </span>
       </div>
     );
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | CURRENT DISPLAY IMAGE
+  |--------------------------------------------------------------------------
+  */
+
+  const currentDisplayImage =
+    has360
+      ? active360Images[
+          current360Frame
+        ] ||
+        productImages[0] ||
+        "/images/no-image.png"
+      : productImages[
+          currentImage
+        ] ||
+        "/images/no-image.png";
+
+  /*
+  |--------------------------------------------------------------------------
+  | WISHLIST IMAGE
+  |--------------------------------------------------------------------------
+  */
+
+  const wishlistImage =
+    selectedColorImages[0] ||
+    productImages[0] ||
+    active360Images[0] ||
+    image ||
+    "/images/no-image.png";
+
+  /*
+  |--------------------------------------------------------------------------
+  | RENDER
+  |--------------------------------------------------------------------------
+  */
+
   return (
-    <div
+    <article
       className="
+        group
         relative
+        min-w-0
         overflow-hidden
-        rounded-xl
+        rounded-2xl
         bg-white
-        shadow
-        transition
+        shadow-sm
+        transition-all
+        duration-300
+        hover:-translate-y-1
         hover:shadow-xl
       "
     >
-      {/* =====================================================
-          WISHLIST
-      ===================================================== */}
+      {/* ======================================================
+          MEDIA AREA
+      ====================================================== */}
 
-      <WishlistButton
-        id={id}
-        name={name}
-        slug={slug}
-        image={productImages[0]}
-        price={price}
-        mrp={mrp}
-      />
+      <div
+        className="
+          relative
+          overflow-hidden
+          bg-[#f5f5f5]
+        "
+      >
+        {/* ====================================================
+            REEL VIDEO
+        ==================================================== */}
 
-      {/* =====================================================
-          IMAGE SLIDER
-      ===================================================== */}
+        {showReel &&
+        hasActiveReel ? (
+          <Link
+            href={
+              productUrl
+            }
+            aria-label={`View ${name}`}
+            className="
+              relative
+              block
+              aspect-[3/4]
+              w-full
+              overflow-hidden
+              bg-black
+            "
+          >
+            <video
+              ref={
+                videoRef
+              }
+              src={
+                reelUrl
+              }
+              poster={
+                reelPoster
+              }
+              muted
+              playsInline
+              autoPlay
+              loop
+              preload="metadata"
+              onError={() =>
+                setShowReel(
+                  false
+                )
+              }
+              className="
+                h-full
+                w-full
+                object-cover
+              "
+            />
 
-      <Link href={`/product/${id}`}>
+            <div
+              className="
+                pointer-events-none
+                absolute
+                bottom-3
+                left-3
+                z-20
+                rounded-full
+                bg-black/75
+                px-3
+                py-1.5
+                text-[9px]
+                font-bold
+                uppercase
+                tracking-[0.12em]
+                text-white
+                backdrop-blur-sm
+              "
+            >
+              Reel
+            </div>
+          </Link>
+        ) : has360 ? (
+          /* ==================================================
+             360 PRODUCT VIEW
+          ================================================== */
+
+          <div
+            className={`
+              relative
+              aspect-[3/4]
+              w-full
+              overflow-hidden
+              bg-[#f5f5f5]
+              select-none
+              touch-pan-y
+
+              ${
+                dragging360
+                  ? "cursor-grabbing"
+                  : "cursor-grab"
+              }
+            `}
+            onPointerDown={
+              handle360PointerDown
+            }
+            onPointerMove={
+              handle360PointerMove
+            }
+            onPointerUp={
+              finish360Drag
+            }
+            onPointerCancel={
+              finish360Drag
+            }
+            onPointerLeave={() => {
+              if (
+                draggingRef.current
+              ) {
+                finish360Drag();
+              }
+            }}
+          >
+            <img
+              src={
+                currentDisplayImage
+              }
+              alt={`${name} 360 degree view`}
+              draggable={
+                false
+              }
+              className="
+                h-full
+                w-full
+                object-cover
+                transition-opacity
+                duration-75
+              "
+            />
+
+            {/* 360 BADGE */}
+
+            <div
+              className="
+                pointer-events-none
+                absolute
+                left-3
+                top-3
+                z-20
+                rounded-full
+                bg-black/85
+                px-3
+                py-1.5
+                text-[10px]
+                font-semibold
+                tracking-wide
+                text-white
+                shadow-sm
+                backdrop-blur-sm
+              "
+            >
+              360°
+            </div>
+
+            {/* FRAME COUNTER */}
+
+            <div
+              className="
+                pointer-events-none
+                absolute
+                right-3
+                top-14
+                z-20
+                rounded-full
+                bg-white/95
+                px-2.5
+                py-1
+                text-[9px]
+                font-semibold
+                text-gray-700
+                shadow-sm
+                backdrop-blur-sm
+              "
+            >
+              {current360Frame +
+                1}
+              /
+              {
+                active360Images.length
+              }
+            </div>
+
+            {/* DRAG INFO */}
+
+            <div
+              className="
+                pointer-events-none
+                absolute
+                bottom-4
+                left-1/2
+                z-20
+                -translate-x-1/2
+                whitespace-nowrap
+                rounded-full
+                bg-white/95
+                px-3
+                py-1.5
+                text-[9px]
+                font-semibold
+                text-gray-700
+                shadow-sm
+                backdrop-blur-sm
+              "
+            >
+              ↔ Drag to rotate
+            </div>
+
+            {/* PREVIOUS 360 */}
+
+            <button
+              type="button"
+              aria-label="Previous 360 frame"
+              onPointerDown={(
+                event
+              ) =>
+                event.stopPropagation()
+              }
+              onClick={(
+                event
+              ) => {
+                event.preventDefault();
+
+                event.stopPropagation();
+
+                previous360Frame();
+              }}
+              className="
+                absolute
+                left-2
+                top-1/2
+                z-30
+                flex
+                h-9
+                w-9
+                -translate-y-1/2
+                items-center
+                justify-center
+                rounded-full
+                bg-white/95
+                text-xl
+                font-light
+                text-black
+                opacity-100
+                shadow-md
+                transition
+                hover:scale-105
+                hover:bg-white
+                sm:opacity-0
+                sm:group-hover:opacity-100
+              "
+            >
+              ‹
+            </button>
+
+            {/* NEXT 360 */}
+
+            <button
+              type="button"
+              aria-label="Next 360 frame"
+              onPointerDown={(
+                event
+              ) =>
+                event.stopPropagation()
+              }
+              onClick={(
+                event
+              ) => {
+                event.preventDefault();
+
+                event.stopPropagation();
+
+                next360Frame();
+              }}
+              className="
+                absolute
+                right-2
+                top-1/2
+                z-30
+                flex
+                h-9
+                w-9
+                -translate-y-1/2
+                items-center
+                justify-center
+                rounded-full
+                bg-white/95
+                text-xl
+                font-light
+                text-black
+                opacity-100
+                shadow-md
+                transition
+                hover:scale-105
+                hover:bg-white
+                sm:opacity-0
+                sm:group-hover:opacity-100
+              "
+            >
+              ›
+            </button>
+
+            {/* VIEW PRODUCT */}
+
+            <Link
+              href={
+                productUrl
+              }
+              aria-label={`Open ${name}`}
+              onPointerDown={(
+                event
+              ) =>
+                event.stopPropagation()
+              }
+              className="
+                absolute
+                bottom-4
+                right-3
+                z-30
+                rounded-full
+                bg-black/85
+                px-3
+                py-1.5
+                text-[9px]
+                font-semibold
+                text-white
+                shadow-sm
+                backdrop-blur-sm
+                transition
+                hover:bg-black
+              "
+            >
+              View
+            </Link>
+          </div>
+        ) : (
+          /* ==================================================
+             NORMAL PRODUCT IMAGE
+          ================================================== */
+
+          <Link
+            href={
+              productUrl
+            }
+            aria-label={`View ${name}`}
+          >
+            <div
+              className="
+                relative
+                aspect-[3/4]
+                w-full
+                cursor-pointer
+                overflow-hidden
+              "
+            >
+              <img
+                src={
+                  currentDisplayImage
+                }
+                alt={`${name} image ${
+                  currentImage +
+                  1
+                }`}
+                draggable={
+                  false
+                }
+                className="
+                  h-full
+                  w-full
+                  object-cover
+                  transition-transform
+                  duration-500
+                  ease-out
+                  group-hover:scale-[1.035]
+                "
+              />
+            </div>
+          </Link>
+        )}
+
+        {/* ====================================================
+            REEL TOGGLE
+        ==================================================== */}
+
+        {hasActiveReel && (
+          <button
+            type="button"
+            aria-label={
+              showReel
+                ? "Show product images"
+                : "Play product reel"
+            }
+            onPointerDown={(
+              event
+            ) =>
+              event.stopPropagation()
+            }
+            onClick={(
+              event
+            ) => {
+              event.preventDefault();
+
+              event.stopPropagation();
+
+              toggleReel();
+            }}
+            className="
+              absolute
+              right-3
+              top-14
+              z-40
+              inline-flex
+              items-center
+              gap-1.5
+              rounded-full
+              bg-black/90
+              px-3
+              py-1.5
+              text-[9px]
+              font-bold
+              uppercase
+              tracking-[0.08em]
+              text-white
+              shadow-md
+              backdrop-blur-sm
+              transition
+              hover:scale-105
+              hover:bg-black
+            "
+          >
+            {showReel ? (
+              <>
+                <span>
+                  ▣
+                </span>
+
+                Photos
+              </>
+            ) : (
+              <>
+                <span>
+                  ▶
+                </span>
+
+                Reel
+              </>
+            )}
+          </button>
+        )}
+
+        {/* ====================================================
+            NEW BADGE
+        ==================================================== */}
+
+        <span
+          className={`
+            absolute
+            left-3
+            z-20
+            rounded-full
+            bg-white/95
+            px-2.5
+            py-1
+            text-[9px]
+            font-semibold
+            uppercase
+            tracking-[0.12em]
+            text-black
+            shadow-sm
+            backdrop-blur-sm
+
+            ${
+              !showReel &&
+              has360
+                ? "top-12"
+                : "top-3"
+            }
+          `}
+        >
+          New
+        </span>
+
+        {/* ====================================================
+            DISCOUNT
+        ==================================================== */}
+
+        {discount > 0 && (
+          <span
+            className={`
+              absolute
+              left-3
+              z-20
+              rounded-full
+              bg-[#111827]
+              px-2.5
+              py-1
+              text-[9px]
+              font-semibold
+              tracking-wide
+              text-white
+              shadow-sm
+
+              ${
+                !showReel &&
+                has360
+                  ? "bottom-12"
+                  : showReel
+                    ? "bottom-12"
+                    : "bottom-3"
+              }
+            `}
+          >
+            {discount}% OFF
+          </span>
+        )}
+
+        {/* ====================================================
+            WISHLIST
+        ==================================================== */}
+
         <div
           className="
-            group
-            relative
-            h-72
-            w-full
-            overflow-hidden
-            bg-gray-100
+            absolute
+            right-3
+            top-3
+            z-50
           "
+          onPointerDown={(
+            event
+          ) =>
+            event.stopPropagation()
+          }
         >
-          <Image
-            src={
-              productImages[
-                currentImage
-              ]
+          <WishlistButton
+            id={id}
+            name={name}
+            slug={slug}
+            image={
+              wishlistImage
             }
-            alt={`${name} ${
-              currentImage + 1
-            }`}
-            fill
-            priority={
-              currentImage === 0
-            }
-            sizes="
-              (max-width: 768px) 100vw,
-              (max-width: 1200px) 50vw,
-              25vw
-            "
-            className="
-              object-cover
-              transition
-              duration-500
-              group-hover:scale-105
-            "
+            price={price}
+            mrp={mrp}
           />
+        </div>
 
-          {/* =================================================
-              PREVIOUS BUTTON
-          ================================================= */}
+        {/* ====================================================
+            NORMAL IMAGE PREVIOUS
+        ==================================================== */}
 
-          {productImages.length >
+        {!showReel &&
+          !has360 &&
+          productImages.length >
             1 && (
             <button
               type="button"
-              aria-label="Previous image"
-              onClick={(event) => {
+              aria-label="Previous product image"
+              onClick={(
+                event
+              ) => {
                 event.preventDefault();
+
                 event.stopPropagation();
 
                 previousImage();
               }}
               className="
                 absolute
-                left-3
+                left-2
                 top-1/2
-                z-10
+                z-20
                 flex
                 h-9
                 w-9
@@ -481,40 +1885,48 @@ export default function ProductCard({
                 items-center
                 justify-center
                 rounded-full
-                bg-white/90
+                bg-white/95
                 text-xl
-                font-bold
+                font-light
                 text-black
-                opacity-0
-                shadow
+                opacity-100
+                shadow-md
                 transition
-                group-hover:opacity-100
+                hover:scale-105
+                hover:bg-white
+                sm:opacity-0
+                sm:group-hover:opacity-100
               "
             >
               ‹
             </button>
           )}
 
-          {/* =================================================
-              NEXT BUTTON
-          ================================================= */}
+        {/* ====================================================
+            NORMAL IMAGE NEXT
+        ==================================================== */}
 
-          {productImages.length >
+        {!showReel &&
+          !has360 &&
+          productImages.length >
             1 && (
             <button
               type="button"
-              aria-label="Next image"
-              onClick={(event) => {
+              aria-label="Next product image"
+              onClick={(
+                event
+              ) => {
                 event.preventDefault();
+
                 event.stopPropagation();
 
                 nextImage();
               }}
               className="
                 absolute
-                right-3
+                right-2
                 top-1/2
-                z-10
+                z-20
                 flex
                 h-9
                 w-9
@@ -522,41 +1934,52 @@ export default function ProductCard({
                 items-center
                 justify-center
                 rounded-full
-                bg-white/90
+                bg-white/95
                 text-xl
-                font-bold
+                font-light
                 text-black
-                opacity-0
-                shadow
+                opacity-100
+                shadow-md
                 transition
-                group-hover:opacity-100
+                hover:scale-105
+                hover:bg-white
+                sm:opacity-0
+                sm:group-hover:opacity-100
               "
             >
               ›
             </button>
           )}
 
-          {/* =================================================
-              IMAGE DOTS
-          ================================================= */}
+        {/* ====================================================
+            NORMAL IMAGE DOTS
+        ==================================================== */}
 
-          {productImages.length >
+        {!showReel &&
+          !has360 &&
+          productImages.length >
             1 && (
             <div
               className="
                 absolute
                 bottom-3
                 left-1/2
-                z-10
+                z-20
                 flex
                 -translate-x-1/2
+                items-center
                 gap-1.5
               "
             >
               {productImages.map(
-                (_, index) => (
+                (
+                  _,
+                  index
+                ) => (
                   <button
-                    key={index}
+                    key={
+                      index
+                    }
                     type="button"
                     aria-label={`Show image ${
                       index + 1
@@ -565,6 +1988,7 @@ export default function ProductCard({
                       event
                     ) => {
                       event.preventDefault();
+
                       event.stopPropagation();
 
                       setCurrentImage(
@@ -572,16 +1996,17 @@ export default function ProductCard({
                       );
                     }}
                     className={`
-                      h-2
-                      w-2
+                      h-[5px]
                       rounded-full
-                      border
-                      transition
+                      shadow-sm
+                      transition-all
+                      duration-200
+
                       ${
                         currentImage ===
                         index
-                          ? "scale-125 bg-black"
-                          : "bg-white"
+                          ? "w-6 bg-black"
+                          : "w-[5px] bg-white"
                       }
                     `}
                   />
@@ -589,73 +2014,96 @@ export default function ProductCard({
               )}
             </div>
           )}
+      </div>
 
-          {/* =================================================
-              IMAGE COUNT
-          ================================================= */}
+      {/* ======================================================
+          PRODUCT INFO
+      ====================================================== */}
 
-          {productImages.length >
-            1 && (
-            <span
-              className="
-                absolute
-                right-3
-                top-3
-                z-10
-                rounded-full
-                bg-black/70
-                px-2
-                py-1
-                text-xs
-                font-medium
-                text-white
-              "
-            >
-              {currentImage + 1}/
-              {productImages.length}
-            </span>
-          )}
-        </div>
-      </Link>
-
-      {/* =====================================================
-          PRODUCT DETAILS
-      ===================================================== */}
-
-      <div className="p-5">
-        {/* CATEGORY + STOCK */}
+      <div
+        className="
+          relative
+          px-4
+          pb-5
+          pt-4
+        "
+      >
+        {/* CATEGORY + OPEN */}
 
         <div
           className="
             flex
-            items-center
+            items-start
             justify-between
             gap-2
           "
         >
-          <p
+          <Link
+            href={
+              productUrl
+            }
+            className="min-w-0"
+          >
+            <p
+              className="
+                truncate
+                text-[10px]
+                font-semibold
+                uppercase
+                tracking-[0.14em]
+                text-gray-500
+              "
+            >
+              {category}
+            </p>
+          </Link>
+
+          <Link
+            href={
+              productUrl
+            }
+            aria-label={`View ${name}`}
             className="
-              text-sm
-              text-gray-500
+              flex
+              h-7
+              w-7
+              shrink-0
+              items-center
+              justify-center
+              rounded-full
+              bg-gray-100
+              text-lg
+              font-light
+              leading-none
+              text-black
+              transition
+              hover:bg-black
+              hover:text-white
             "
           >
-            {category}
-          </p>
-
-          <StockStatus />
+            +
+          </Link>
         </div>
 
-        {/* PRODUCT NAME */}
+        {/* NAME */}
 
-        <Link href={`/product/${id}`}>
+        <Link
+          href={
+            productUrl
+          }
+        >
           <h2
             className="
-              mt-3
+              mt-2
               line-clamp-2
-              text-xl
-              font-semibold
+              min-h-[38px]
+              pr-1
+              text-[14px]
+              font-medium
+              leading-[1.35]
+              text-gray-900
               transition
-              hover:text-gray-600
+              hover:text-[#2563EB]
             "
           >
             {name}
@@ -664,298 +2112,253 @@ export default function ProductCard({
 
         {/* RATING */}
 
-        <div className="mt-2">
-          <ProductRating />
-        </div>
+        {rating > 0 && (
+          <div className="mt-2">
+            <ProductRating />
+          </div>
+        )}
 
         {/* PRICE */}
 
         <div
           className="
-            mt-4
+            mt-2.5
             flex
+            flex-wrap
             items-center
-            gap-3
+            gap-x-2
+            gap-y-1
           "
         >
           <span
             className="
-              text-xl
+              text-sm
               font-bold
+              text-gray-900
             "
           >
-            ₹{price}
+            ₹
+            {Number(
+              price || 0
+            ).toLocaleString(
+              "en-IN"
+            )}
           </span>
 
           {mrp > price && (
             <span
               className="
+                text-xs
                 text-gray-400
                 line-through
               "
             >
-              ₹{mrp}
+              ₹
+              {Number(
+                mrp || 0
+              ).toLocaleString(
+                "en-IN"
+              )}
+            </span>
+          )}
+
+          {discount > 0 && (
+            <span
+              className="
+                text-[10px]
+                font-semibold
+                text-green-600
+              "
+            >
+              {discount}% off
             </span>
           )}
         </div>
 
-        {/* DISCOUNT */}
-
-        {discount > 0 && (
-          <p
-            className="
-              mt-2
-              text-sm
-              font-semibold
-              text-green-600
-            "
-          >
-            {discount}% OFF
-          </p>
-        )}
-
-        {/* ===================================================
-            SIZE
-        =================================================== */}
-
-        {sizes.length > 0 && (
-          <div className="mt-5">
-            <p
-              className="
-                mb-2
-                text-sm
-                font-semibold
-              "
-            >
-              Select Size
-            </p>
-
-            <div
-              className="
-                flex
-                flex-wrap
-                gap-2
-              "
-            >
-              {sizes.map(
-                (size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() =>
-                      setSelectedSize(
-                        size
-                      )
-                    }
-                    className={`
-                      rounded
-                      border
-                      px-3
-                      py-1
-                      text-sm
-                      transition
-                      ${
-                        selectedSize ===
-                        size
-                          ? "bg-black text-white"
-                          : "bg-white text-black hover:bg-gray-100"
-                      }
-                    `}
-                  >
-                    {size}
-                  </button>
-                )
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ===================================================
-            COLOR
-        =================================================== */}
+        {/* ====================================================
+            COLOR SWATCHES
+        ==================================================== */}
 
         {colors.length > 0 && (
-          <div className="mt-5">
-            <p
-              className="
-                mb-2
-                text-sm
-                font-semibold
-              "
-            >
-              Select Color
-            </p>
-
-            <div
-              className="
-                flex
-                flex-wrap
-                gap-2
-              "
-            >
-              {colors.map(
-                (color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() =>
-                      setSelectedColor(
-                        color
-                      )
-                    }
-                    className={`
-                      rounded
-                      border
-                      px-3
-                      py-1
-                      text-sm
-                      transition
-                      ${
-                        selectedColor ===
-                        color
-                          ? "bg-black text-white"
-                          : "bg-white text-black hover:bg-gray-100"
-                      }
-                    `}
-                  >
-                    {color}
-                  </button>
-                )
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ===================================================
-            CART
-        =================================================== */}
-
-        {cartItem ? (
           <div
             className="
-              mt-5
-              space-y-3
+              mt-4
+              flex
+              flex-wrap
+              items-start
+              gap-x-3
+              gap-y-3
             "
           >
-            <div
-              className="
-                flex
-                items-center
-                justify-between
-                rounded-lg
-                border
-                p-2
-              "
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  updateQuantity(
-                    id,
-                    selectedSize,
-                    selectedColor,
-                    "decrease"
-                  )
-                }
-                className="
-                  h-10
-                  w-10
-                  rounded
-                  bg-gray-200
-                  text-xl
-                  transition
-                  hover:bg-gray-300
-                "
-              >
-                -
-              </button>
+            {colors
+              .slice(0, 6)
+              .map(
+                (
+                  color,
+                  index
+                ) => {
+                  const isSelected =
+                    selectedColor
+                      .trim()
+                      .toLowerCase() ===
+                    color
+                      .trim()
+                      .toLowerCase();
 
+                  const hasColor360 =
+                    colorHas360(
+                      color
+                    );
+
+                  return (
+                    <button
+                      key={`${color}-${index}`}
+                      type="button"
+                      title={
+                        hasColor360
+                          ? `${color} 360°`
+                          : color
+                      }
+                      aria-label={`Select ${color}`}
+                      aria-pressed={
+                        isSelected
+                      }
+                      onClick={() =>
+                        handleColorSelect(
+                          color
+                        )
+                      }
+                      className="
+                        flex
+                        min-w-[36px]
+                        flex-col
+                        items-center
+                        gap-1.5
+                      "
+                    >
+                      <span
+                        className={`
+                          flex
+                          h-[27px]
+                          w-[27px]
+                          items-center
+                          justify-center
+                          rounded-full
+                          transition-all
+                          duration-200
+
+                          ${
+                            isSelected
+                              ? "ring-2 ring-black ring-offset-2"
+                              : "hover:scale-110"
+                          }
+                        `}
+                      >
+                        <span
+                          className="
+                            h-[19px]
+                            w-[19px]
+                            rounded-full
+                            border
+                            border-gray-300
+                            shadow-sm
+                          "
+                          style={{
+                            backgroundColor:
+                              getColorValue(
+                                color
+                              ),
+                          }}
+                        />
+                      </span>
+
+                      <span
+                        className={`
+                          max-w-[62px]
+                          truncate
+                          text-center
+                          text-[9px]
+                          capitalize
+                          leading-tight
+
+                          ${
+                            isSelected
+                              ? "font-semibold text-black"
+                              : "font-medium text-gray-500"
+                          }
+                        `}
+                      >
+                        {color}
+                      </span>
+
+                      {hasColor360 && (
+                        <span
+                          className="
+                            -mt-0.5
+                            text-[7px]
+                            font-bold
+                            leading-none
+                            text-gray-700
+                          "
+                        >
+                          360°
+                        </span>
+                      )}
+                    </button>
+                  );
+                }
+              )}
+
+            {colors.length >
+              6 && (
               <span
                 className="
-                  text-xl
-                  font-bold
-                "
-              >
-                {cartItem.quantity}
-              </span>
-
-              <button
-                type="button"
-                onClick={() =>
-                  updateQuantity(
-                    id,
-                    selectedSize,
-                    selectedColor,
-                    "increase"
-                  )
-                }
-                className="
-                  h-10
-                  w-10
-                  rounded
-                  bg-gray-200
-                  text-xl
-                  transition
-                  hover:bg-gray-300
+                  mt-1
+                  flex
+                  h-7
+                  items-center
+                  text-[10px]
+                  font-medium
+                  text-gray-500
                 "
               >
                 +
-              </button>
-            </div>
+                {colors.length -
+                  6}
+              </span>
+            )}
+          </div>
+        )}
 
-            <button
-              type="button"
-              onClick={() =>
-                removeFromCart(
-                  id,
-                  selectedSize,
-                  selectedColor
-                )
-              }
+        {/* STOCK */}
+
+        {stock > 0 &&
+          stock <= 5 && (
+            <p
               className="
-                w-full
-                rounded-lg
-                bg-red-600
-                py-3
-                text-white
-                transition
-                hover:bg-red-700
+                mt-3
+                text-[10px]
+                font-semibold
+                text-[#d97706]
               "
             >
-              Remove
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={
-              handleAddCart
-            }
-            disabled={
-              adding ||
-              isOutOfStock
-            }
+              Only {stock} left
+            </p>
+          )}
+
+        {stock <= 0 && (
+          <p
             className="
-              mt-5
-              w-full
-              rounded-lg
-              bg-black
-              py-3
-              text-white
-              transition
-              hover:bg-gray-800
-              disabled:cursor-not-allowed
-              disabled:opacity-50
+              mt-3
+              text-[10px]
+              font-semibold
+              text-red-600
             "
           >
-            {adding
-              ? "Adding..."
-              : isOutOfStock
-              ? "Out Of Stock"
-              : "Add To Cart"}
-          </button>
+            Out of stock
+          </p>
         )}
       </div>
-    </div>
+    </article>
   );
 }

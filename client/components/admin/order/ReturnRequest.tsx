@@ -33,7 +33,7 @@ export default function ReturnRequest({
       const res = await fetch(
         "/api/admin/orders/return",
         {
-          method: "PUT",
+          method: "PATCH",
           credentials: "include",
           headers: {
             "Content-Type":

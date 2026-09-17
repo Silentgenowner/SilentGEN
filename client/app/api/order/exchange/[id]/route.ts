@@ -1,182 +1,557 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
+
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 import connectDB from "@/lib/connectDB";
-import Order from "@/models/Order";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+import {
+  ExchangeRequestServiceError,
+  submitExchangeRequest,
+} from "@/lib/order/submitExchangeRequest";
 
-export async function POST(req: NextRequest) {
+/*
+|--------------------------------------------------------------------------
+| TYPES
+|--------------------------------------------------------------------------
+*/
 
+type TokenPayload = {
+  id?: string;
+
+  userId?: string;
+};
+
+type ExchangeRequestBody = {
+  reason?: string;
+};
+
+/*
+|--------------------------------------------------------------------------
+| HELPERS
+|--------------------------------------------------------------------------
+*/
+
+function cleanString(
+  value: unknown
+) {
+  if (
+    typeof value !==
+    "string"
+  ) {
+    return "";
+  }
+
+  return value
+    .trim()
+    .replace(
+      /\s+/g,
+      " "
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| POST EXCHANGE REQUEST
+|--------------------------------------------------------------------------
+|
+| Route:
+|
+| POST /api/order/exchange/[id]
+|
+| Example:
+|
+| POST /api/order/exchange/68abc123...
+|
+| Body:
+|
+| {
+|   reason: "Size does not fit"
+| }
+|
+|--------------------------------------------------------------------------
+*/
+
+export async function POST(
+  req: NextRequest,
+  context: {
+    params: Promise<{
+      id: string;
+    }>;
+  }
+) {
   try {
+    /*
+    |--------------------------------------------------------------------------
+    | DATABASE
+    |--------------------------------------------------------------------------
+    */
 
     await connectDB();
 
-    const token =
-      req.cookies.get("token")?.value;
+    /*
+    |--------------------------------------------------------------------------
+    | JWT SECRET
+    |--------------------------------------------------------------------------
+    */
 
-    if (!token) {
+    const jwtSecret =
+      process.env
+        .JWT_SECRET
+        ?.trim();
 
+    if (
+      !jwtSecret
+    ) {
       return NextResponse.json(
         {
-          success: false,
-          message: "Please login first",
+          success:
+            false,
+
+          message:
+            "Server authentication configuration is missing.",
         },
         {
-          status: 401,
+          status:
+            500,
         }
       );
-
     }
 
-    let decoded: any;
+    /*
+    |--------------------------------------------------------------------------
+    | TOKEN
+    |--------------------------------------------------------------------------
+    */
+
+    const token =
+      req.cookies.get(
+        "token"
+      )?.value;
+
+    if (
+      !token
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Please login first.",
+        },
+        {
+          status:
+            401,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | VERIFY TOKEN
+    |--------------------------------------------------------------------------
+    */
+
+    let decoded:
+      TokenPayload;
 
     try {
-
-      decoded = jwt.verify(
-        token,
-        JWT_SECRET
-      );
-
+      decoded =
+        jwt.verify(
+          token,
+          jwtSecret
+        ) as TokenPayload;
     } catch {
-
       return NextResponse.json(
         {
-          success: false,
-          message: "Invalid token",
+          success:
+            false,
+
+          message:
+            "Invalid or expired login session.",
         },
         {
-          status: 401,
+          status:
+            401,
         }
       );
-
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | USER ID
+    |--------------------------------------------------------------------------
+    */
 
     const userId =
-      decoded.id ||
-      decoded.userId;
-
-    const body =
-      await req.json();
-
-    const {
-      orderId,
-      reason,
-    } = body;
-
-    if (!orderId || !reason) {
-
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Order ID and reason are required",
-        },
-        {
-          status: 400,
-        }
+      cleanString(
+        decoded.id ||
+          decoded.userId
       );
 
+    if (
+      !userId ||
+      !mongoose.Types.ObjectId.isValid(
+        userId
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Invalid customer account.",
+        },
+        {
+          status:
+            401,
+        }
+      );
     }
 
-    const order =
-      await Order.findOne({
+    /*
+    |--------------------------------------------------------------------------
+    | ORDER ID FROM URL
+    |--------------------------------------------------------------------------
+    */
 
-        _id: orderId,
+    const {
+      id,
+    } =
+      await context.params;
 
-        user: userId,
-
-      });
-
-    if (!order) {
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Order not found",
-        },
-        {
-          status: 404,
-        }
+    const orderId =
+      cleanString(
+        id
       );
 
+    if (
+      !orderId
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Order ID is required.",
+        },
+        {
+          status:
+            400,
+        }
+      );
     }
 
     if (
-      order.orderStatus !==
-      "Delivered"
+      !mongoose.Types.ObjectId.isValid(
+        orderId
+      )
     ) {
-
       return NextResponse.json(
         {
-          success: false,
+          success:
+            false,
+
           message:
-            "Only delivered orders can be exchanged",
+            "Invalid order ID.",
         },
         {
-          status: 400,
+          status:
+            400,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | BODY
+    |--------------------------------------------------------------------------
+    */
+
+    let body:
+      ExchangeRequestBody;
+
+    try {
+      body =
+        (
+          await req.json()
+        ) as ExchangeRequestBody;
+    } catch {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Invalid request body.",
+        },
+        {
+          status:
+            400,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | REASON
+    |--------------------------------------------------------------------------
+    */
+
+    const reason =
+      cleanString(
+        body.reason
+      );
+
+    if (
+      !reason
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            "Please provide a reason for the exchange.",
+        },
+        {
+          status:
+            400,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SHARED EXCHANGE SERVICE
+    |--------------------------------------------------------------------------
+    |
+    | All important business logic now stays in:
+    |
+    | lib/order/submitExchangeRequest.ts
+    |
+    | It handles:
+    |
+    | - customer ownership
+    | - Delivered eligibility
+    | - duplicate exchange prevention
+    | - return/exchange conflict
+    | - atomic DB update
+    | - Exchange Requested status
+    | - delivery history
+    | - exchange_requested learning
+    |
+    |--------------------------------------------------------------------------
+    */
+
+    const result =
+      await submitExchangeRequest(
+        {
+          userId,
+
+          orderId,
+
+          reason,
+
+          channel:
+            "website_exchange_route",
         }
       );
 
-    }
+    const order =
+      result.order;
 
-    order.orderStatus =
-      "Exchange Requested";
+    /*
+    |--------------------------------------------------------------------------
+    | SUCCESS
+    |--------------------------------------------------------------------------
+    */
 
-    order.exchangeRequest = {
+    return NextResponse.json(
+      {
+        success:
+          true,
 
-      reason,
+        message:
+          "Exchange request submitted successfully.",
 
-      status: "Pending",
+        order: {
+          /*
+          |--------------------------------------------------------------------------
+          | ORDER ID
+          |--------------------------------------------------------------------------
+          */
 
-      requestedAt:
-        new Date(),
+          orderId:
+            String(
+              order._id
+            ),
 
-    };
+          /*
+          |--------------------------------------------------------------------------
+          | STATUS
+          |--------------------------------------------------------------------------
+          */
 
-    order.deliveryHistory.push({
+          orderStatus:
+            order.orderStatus,
 
-      status:
-        "Exchange Requested" as any,
+          /*
+          |--------------------------------------------------------------------------
+          | EXCHANGE REQUEST
+          |--------------------------------------------------------------------------
+          */
 
-      date:
-        new Date(),
+          exchangeRequest:
+            order.exchangeRequest,
 
-      note:
-        "Exchange requested by customer",
+          /*
+          |--------------------------------------------------------------------------
+          | RETURN REQUEST
+          |--------------------------------------------------------------------------
+          */
 
-    });
+          returnRequest:
+            order.returnRequest,
 
-    await order.save();
+          /*
+          |--------------------------------------------------------------------------
+          | REFUND
+          |--------------------------------------------------------------------------
+          |
+          | Exchange Requested does not mean a refund has started.
+          |
+          |--------------------------------------------------------------------------
+          */
 
-    return NextResponse.json({
+          refundStatus:
+            order.refundStatus,
 
-      success: true,
+          /*
+          |--------------------------------------------------------------------------
+          | PAYMENT
+          |--------------------------------------------------------------------------
+          */
 
-      message:
-        "Exchange request submitted successfully",
+          paymentStatus:
+            order.paymentStatus,
 
-    });
+          paymentMethod:
+            order.paymentMethod,
 
-  } catch (error: any) {
+          /*
+          |--------------------------------------------------------------------------
+          | TOTAL
+          |--------------------------------------------------------------------------
+          */
 
-    console.log(
+          totalAmount:
+            order.totalAmount,
+
+          /*
+          |--------------------------------------------------------------------------
+          | UPDATED
+          |--------------------------------------------------------------------------
+          */
+
+          updatedAt:
+            order.updatedAt,
+        },
+      },
+      {
+        status:
+          200,
+      }
+    );
+  } catch (
+    error: unknown
+  ) {
+    /*
+    |--------------------------------------------------------------------------
+    | LOG
+    |--------------------------------------------------------------------------
+    */
+
+    console.error(
       "EXCHANGE REQUEST ERROR:",
       error
     );
 
+    /*
+    |--------------------------------------------------------------------------
+    | KNOWN BUSINESS ERROR
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      error instanceof
+      ExchangeRequestServiceError
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            error.message,
+        },
+        {
+          status:
+            error.status,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | MONGOOSE VALIDATION ERROR
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      error instanceof
+      mongoose.Error.ValidationError
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Exchange request validation failed.",
+        },
+        {
+          status:
+            400,
+        }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | UNKNOWN ERROR
+    |--------------------------------------------------------------------------
+    */
+
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
+
         message:
-          error.message ||
-          "Server Error",
+          "Exchange request failed. Please try again.",
       },
       {
-        status: 500,
+        status:
+          500,
       }
     );
-
   }
-
 }

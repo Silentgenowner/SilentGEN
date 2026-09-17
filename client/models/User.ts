@@ -1,77 +1,275 @@
-import { Schema, model, models, Types } from "mongoose";
+import {
+  Schema,
+  model,
+  models,
+  Types,
+} from "mongoose";
 
-const UserSchema = new Schema(
-  {
-    name: {
-      type: String,
-      default: "New User",
-      trim: true,
-    },
+/*
+|--------------------------------------------------------------------------
+| USER SCHEMA
+|--------------------------------------------------------------------------
+*/
 
-    mobile: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-    },
+const UserSchema =
+  new Schema(
+    {
+      /*
+      |--------------------------------------------------------------------------
+      | BASIC INFORMATION
+      |--------------------------------------------------------------------------
+      */
 
-    email: {
-      type: String,
-      default: "",
-      unique: true,
-      sparse: true,
-      lowercase: true,
-      trim: true,
-    },
+      name: {
+        type:
+          String,
 
-    password: {
-      type: String,
-      default: "",
-    },
+        default:
+          "New User",
 
-    role: {
-      type: String,
-      enum: ["user", "admin"],
-      default: "user",
-    },
-
-    profileImage: {
-      type: String,
-      default: "",
-    },
-
-    isVerified: {
-      type: Boolean,
-      default: false,
-    },
-
-    isProfileCompleted: {
-      type: Boolean,
-       default: false,
-     },
-
-    isBlocked: {
-      type: Boolean,
-      default: false,
-    },
-
-    lastLogin: {
-      type: Date,
-    },
-
-    wishlist: [
-      {
-        type: Types.ObjectId,
-        ref: "Product",
+        trim:
+          true,
       },
-    ],
-  },
-  {
-    timestamps: true,
-  }
-);
+
+      mobile: {
+        type:
+          String,
+
+        required:
+          true,
+
+        unique:
+          true,
+
+        trim:
+          true,
+      },
+
+      email: {
+        type:
+          String,
+
+        default:
+          "",
+
+        unique:
+          true,
+
+        sparse:
+          true,
+
+        lowercase:
+          true,
+
+        trim:
+          true,
+      },
+
+      password: {
+        type:
+          String,
+
+        default:
+          "",
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | ROLE
+      |--------------------------------------------------------------------------
+      */
+
+      role: {
+        type:
+          String,
+
+        enum: [
+          "user",
+          "admin",
+        ],
+
+        default:
+          "user",
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | PROFILE
+      |--------------------------------------------------------------------------
+      */
+
+      profileImage: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      isVerified: {
+        type:
+          Boolean,
+
+        default:
+          false,
+      },
+
+      isProfileCompleted: {
+        type:
+          Boolean,
+
+        default:
+          false,
+      },
+
+      isBlocked: {
+        type:
+          Boolean,
+
+        default:
+          false,
+      },
+
+      lastLogin: {
+        type:
+          Date,
+
+        default:
+          null,
+      },
+
+      /*
+      |--------------------------------------------------------------------------
+      | WISHLIST
+      |--------------------------------------------------------------------------
+      */
+
+      wishlist: [
+        {
+          type:
+            Types.ObjectId,
+
+          ref:
+            "Product",
+        },
+      ],
+    },
+    {
+      timestamps:
+        true,
+    }
+  );
+
+/*
+|--------------------------------------------------------------------------
+| DATABASE INDEXES
+|--------------------------------------------------------------------------
+*/
+
+/*
+|--------------------------------------------------------------------------
+| ROLE + CREATED
+|--------------------------------------------------------------------------
+*/
+
+UserSchema.index({
+  role:
+    1,
+
+  createdAt:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| BLOCK STATUS + CREATED
+|--------------------------------------------------------------------------
+*/
+
+UserSchema.index({
+  isBlocked:
+    1,
+
+  createdAt:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| VERIFIED + CREATED
+|--------------------------------------------------------------------------
+*/
+
+UserSchema.index({
+  isVerified:
+    1,
+
+  createdAt:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| PROFILE COMPLETED + CREATED
+|--------------------------------------------------------------------------
+*/
+
+UserSchema.index({
+  isProfileCompleted:
+    1,
+
+  createdAt:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| LAST LOGIN
+|--------------------------------------------------------------------------
+*/
+
+UserSchema.index({
+  lastLogin:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| CREATED AT
+|--------------------------------------------------------------------------
+*/
+
+UserSchema.index({
+  createdAt:
+    -1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| WISHLIST PRODUCT LOOKUP
+|--------------------------------------------------------------------------
+*/
+
+UserSchema.index({
+  wishlist:
+    1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| MODEL
+|--------------------------------------------------------------------------
+*/
 
 const User =
-  models.User || model("User", UserSchema);
+  models.User ||
+  model(
+    "User",
+
+    UserSchema
+  );
 
 export default User;

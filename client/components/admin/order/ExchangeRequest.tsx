@@ -32,7 +32,7 @@ export default function ExchangeRequest({
       const res = await fetch(
         "/api/admin/orders/exchange",
         {
-          method: "PUT",
+          method: "PATCH",
           credentials: "include",
           headers: {
             "Content-Type": "application/json",
